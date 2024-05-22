@@ -1,0 +1,22 @@
+syntax = "proto3";
+package silo;
+
+service Silo {
+    rpc GetPackage(GetPackageRequest) returns (GetPackageResponse) {}
+}
+
+message GetPackageRequest {
+    int32 id = 1;
+    bytes func = 2;
+    // repeated bytes args = 3;
+    // map<string, bytes> kwargs = 4;
+    bytes args = 3;
+    bytes kwargs = 4;
+}
+
+message GetPackageResponse {
+    int32 name = 2;
+}
+
+// run in main directory 
+// python -m grpc_tools.protoc -I./common/protobufs/ --python_out=./examples/silo --grpc_python_out=./examples/silo silo.proto
