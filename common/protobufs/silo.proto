@@ -15,7 +15,9 @@ message GetPackageRequest {
 }
 
 message GetPackageResponse {
-    int32 name = 2;
+    bytes output = 2;
+
+    string errors = 3;
 }
 
 // run in main directory 

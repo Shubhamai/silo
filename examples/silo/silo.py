@@ -60,7 +60,9 @@ class RemoteFunction:
 
         response = self._make_request("execute", request)
 
-        return response
+        # print(response.errors)
+
+        return pickle.loads(response.output)
 
     def local(self, *args, **kwargs):
         function_code = cloudpickle.dumps(self.func)

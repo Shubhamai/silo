@@ -1,20 +1,14 @@
 mod grpc;
+mod http;
 mod mount;
 mod namespace;
+mod net;
 
-use std::{
-    fs::{File, OpenOptions},
-    io::{self, Write},
-    thread, time,
-};
-
-use clap::{Arg, Command};
+use clap::Command;
 use colored::*;
 use grpc::{silo::silo_server::SiloServer, TheSilo};
-use nix::{
-    sched::{unshare, CloneFlags},
-    sys::wait::waitpid,
-};
+
+use http::http_server;
 use tonic::transport::Server;
 
 #[tokio::main]
@@ -24,24 +18,16 @@ async fn main() {
         .version(env!("CARGO_PKG_VERSION"))
         .about("[WIP] Build and deploy containers in seconds")
         .subcommand_required(true)
-        .subcommand(
-            Command::new("facility").about("Run the facility to launch containers"), // .arg(
-                                                                                     //     Arg::new("CONTAINER")
-                                                                                     //         .help("The path of container to run")
-                                                                                     //         .required(true)
-                                                                                     //         .index(1),
-                                                                                     // ),
-        )
+        .subcommand(Command::new("facility").about("Run the facility to launch containers"))
         .get_matches();
 
     match matches.subcommand() {
-        Some(("facility", sub_m)) => {
-            let addr = "[::1]:50051".parse().unwrap();
-            let silo = TheSilo::default();
+        Some(("facility", _)) => {
+            http_server("0.0.0.0:8080".to_string());
 
             Server::builder()
-                .add_service(SiloServer::new(silo))
-                .serve(addr)
+                .add_service(SiloServer::new(TheSilo {}))
+                .serve("[::1]:50051".parse().unwrap())
                 .await
                 .unwrap();
         }

@@ -1,23 +1,23 @@
-use std::{ffi::CString, fs::File, io::Write, path::Path};
+use std::{ffi::CString, fs::File, io::Write,  };
 
 use nix::{
-    mount::{self, mount, umount2, MntFlags, MsFlags},
-    sched::{clone, unshare, CloneFlags},
-    sys::{signal::Signal, stat},
-    unistd::{chdir, execve, execvp, mkdir, setgid, sethostname, setresgid, setresuid, setuid, Pid},
+    mount::{self, mount, MsFlags}, sched::{clone, CloneFlags}, sys::signal::Signal, unistd::{ execvp, sethostname,  Pid}
 };
 
-use crate::mount::setup_rootfs;
+use crate::{mount::setup_rootfs, net::setup_veth_peer};
 
 const STACK_SIZE: usize = 1024 * 1024;
 
-fn child_func(container_path: &str, func: Vec<u8>, args: Vec<u8>, kwargs: Vec<u8>) -> isize {
-    // unshare(CloneFlags::CLONE_NEWUSER).expect("Failed to unshare");
+ fn child_func(container_path: &str, 
+veth2_idx : u32,
+container_name: &str,
+container_link: String,
+host_link: &str,
+) -> isize {
 
-    sethostname("silo").unwrap();
-
+    sethostname(container_name).unwrap();
     setup_rootfs(container_path);
-    
+    // unshare(CloneFlags::CLONE_NEWUSER).expect("Failed to unshare");
 
     match mount(
         Some("proc"),
@@ -41,63 +41,75 @@ fn child_func(container_path: &str, func: Vec<u8>, args: Vec<u8>, kwargs: Vec<u8
     )
     .unwrap();
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Change the effective user and group IDs to 0 (root)
-    // setresuid(
-    //     nix::unistd::Uid::from_raw(0),
-    //     nix::unistd::Uid::from_raw(0),
-    //     nix::unistd::Uid::from_raw(0),
-    // )
-    // .unwrap();
-    // setuid(nix::unistd::Uid::from_raw(0)).unwrap();
-    // setresgid(
-    //     nix::unistd::Gid::from_raw(0),
-    //     nix::unistd::Gid::from_raw(0),
-    //     nix::unistd::Gid::from_raw(0),
-    // )
-    // .unwrap();
-    // setgid(nix::unistd::Gid::from_raw(0)).unwrap();
 
-    ///////////////////////////////////////////////////////////////////////////
 
-    // Write the serialized function to a temporary file
-    let func_path = "/tmp/func.pkl";
-    let mut file = File::create(func_path).unwrap();
-    file.write_all(&func).unwrap();
+std::thread::spawn(move || {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let container_link = container_link.clone();
 
-    // args and kwargs are pickled and saved to /tmp/args.pkl and /tmp/kwargs.pkl
-    let args_path = "/tmp/args.pkl";
-    let mut args_file = File::create(args_path).unwrap();
-    args_file.write_all(&args).unwrap();
-
-    let kwargs_path = "/tmp/kwargs.pkl";
-    let mut kwargs_file = File::create(kwargs_path).unwrap();
-    kwargs_file.write_all(&kwargs).unwrap();
-
+    rt.block_on(async {
+        setup_veth_peer(veth2_idx, &container_link, 16).await.unwrap();
+    });
+}).join().unwrap();
     
     let script = format!(
         r#"
+import requests
 import cloudpickle
-with open("{func_path}", "rb") as f:
-    func = cloudpickle.load(f)
-# load args
-with open("/tmp/args.pkl", "rb") as f:
-    args = cloudpickle.load(f)
-# load kwargs
-with open("/tmp/kwargs.pkl", "rb") as f:
-    kwargs = cloudpickle.load(f)
-func(*args, **kwargs)"#,
-        func_path = func_path
+import time
+
+start = time.perf_counter()
+
+url = "{host_link}/data"
+response = requests.get(url, headers={{"hostname": "{container_name}"}})
+
+if response.status_code == 200:
+    res = response.json()
+
+    func = cloudpickle.loads(
+        bytes.fromhex("".join(format(x, "02x") for x in res["func"]))
+    )
+    print(bytes.fromhex("".join(format(x, "02x") for x in res["args"])))
+
+    args = cloudpickle.loads(
+        bytes.fromhex("".join(format(x, "02x") for x in res["args"]))
+    )
+    kwargs = cloudpickle.loads(
+        bytes.fromhex("".join(format(x, "02x") for x in res["kwargs"]))
+    )
+    output = func(*args, **kwargs)
+
+    result = cloudpickle.dumps(output)
+
+    data = {{'output': list(result)}}
+
+    # send the result back
+    response = requests.put("{host_link}/output", json=data, headers={{"hostname": "{container_name}"}})
+
+    if response.status_code == 200:
+        print("Success!")
+
+
+else:
+    print("Failed with status code:", response.status_code)
+
+end = time.perf_counter() - start
+# print ms
+print(f"Python time taken: {{end * 1000:.2f}}ms")
+"#,
+host_link = host_link
     );
 
     let script_path = "/tmp/exec_func.py";
     let mut script_file = File::create(script_path).unwrap();
     script_file.write_all(script.as_bytes()).unwrap();
 
-    // Execute the Python script
     let python = CString::new("/opt/bitnami/python/bin/python").unwrap();
     let script_cstr = CString::new(script_path).unwrap();
     execvp(&python, &[python.clone(), script_cstr]).unwrap();
+
+
+    ///////////////////////////////////////////////////////////////////////////
 
     // run /bin/bash
     // let bash = CString::new("/bin/bash").unwrap();
@@ -111,9 +123,10 @@ func(*args, **kwargs)"#,
 
 pub fn create_child(
     container_path: &str,
-    func: Vec<u8>,
-    args: Vec<u8>,
-    kwargs: Vec<u8>,
+    veth2_idx : u32,
+    container_name: &str,
+    container_link: String,
+    host_link: &str,
 ) -> Result<Pid, nix::Error> {
     let mut stack = [0; STACK_SIZE];
 
@@ -131,7 +144,12 @@ pub fn create_child(
 
     unsafe {
         clone(
-            Box::new(|| child_func(container_path, func.clone(), args.clone(), kwargs.clone())),
+            Box::new(   move  || child_func(container_path, 
+            veth2_idx,
+            container_name,
+            container_link.clone(),
+            host_link,
+            )),
             &mut stack,
             clone_flags,
             Some(Signal::SIGCHLD as i32),

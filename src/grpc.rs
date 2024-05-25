@@ -1,48 +1,102 @@
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::time::Instant;
-use std::{thread, time};
-
+use bincode::{Decode, Encode};
 use nix::sys::wait::waitpid;
-use tonic::{transport::Server, Request, Response, Status};
+use serde::{Deserialize, Serialize};
+use tonic::{Request, Response, Status};
 
-use silo::silo_server::{Silo, SiloServer};
+use silo::silo_server::Silo;
 use silo::{GetPackageRequest, GetPackageResponse};
 
 use colored::*;
 
 use crate::namespace;
-
+use crate::net::{join_veth_to_ns, prepare_net};
 pub mod silo {
-    tonic::include_proto!("silo"); // The string specified here must match the proto package name
+    tonic::include_proto!("silo");
 }
 
-#[derive(Debug, Default)]
+#[derive(Encode, Decode, PartialEq, Debug, Deserialize, Serialize)]
+pub struct PythonInput {
+    pub func: Vec<u8>,
+    pub args: Vec<u8>,
+    pub kwargs: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PythonOutput {
+    pub output: Vec<u8>,
+}
+
+#[derive(Debug)]
 pub struct TheSilo {}
 
 #[tonic::async_trait]
 impl Silo for TheSilo {
     async fn get_package(
         &self,
-        request: Request<GetPackageRequest>, // Accept request of type HelloRequest
+        request: Request<GetPackageRequest>,
     ) -> Result<Response<GetPackageResponse>, Status> {
-        let request_data = request.into_inner();
-
+        // clear the terminal screen and reset the cursor to the top-left position
+        print!("\x1B[2J\x1B[1;1H");
         // let container_path = sub_m.get_one::<String>("CONTAINER").unwrap();
         let container_path = "/home/elden/Downloads/python";
+        let container_name = &format!("container-{}", rand::random::<u32>());
+        let host_link = "http://172.18.0.1:8080";
+        let local_container_link = "http://0.0.0.0:8080";
+        let container_link = "172.18.0.4";
+        let bridge_name = "isobr0";
 
+        let request_data = request.into_inner();
+
+        // send the data to the HTTP server
+        reqwest::Client::new()
+            .put(format!("{}/data", local_container_link))
+            .body(
+                bincode::encode_to_vec(
+                    PythonInput {
+                        func: request_data.func.clone(),
+                        args: request_data.args.clone(),
+                        kwargs: request_data.kwargs.clone(),
+                    },
+                    bincode::config::standard(),
+                )
+                .unwrap(),
+            )
+            .header("hostname", container_name)
+            .send()
+            .await
+            .unwrap();
+
+        // check if the container path exists
         if !std::path::Path::new(&container_path).exists() {
             println!("{}", format!("{} does not exist", container_path).red());
             panic!("Container does not exist");
         }
 
-        println!("{}", format!("Running {}...", container_path).green());
+        println!(
+            "{}",
+            format!("Running {} {}...", container_name, container_path).bright_yellow()
+        );
+
+        let (_, _, veth2_idx) = prepare_net(
+            bridge_name.to_string(),
+            host_link
+                .split("//")
+                .nth(1)
+                .unwrap()
+                .split(":")
+                .nth(0)
+                .unwrap(),
+            16,
+        )
+        .await
+        .expect("Failed to prepare network");
 
         let child_pid = namespace::create_child(
             container_path,
-            request_data.func,
-            request_data.args,
-            request_data.kwargs,
+            veth2_idx,
+            container_name,
+            container_link.to_owned(),
+            &host_link,
         );
 
         match child_pid {
@@ -52,30 +106,10 @@ impl Silo for TheSilo {
                     format!("Container {} is running with PID {}", container_path, pid).green()
                 );
 
-                //////////////////////////////////////////
+                join_veth_to_ns(veth2_idx, pid.as_raw() as u32)
+                    .await
+                    .expect("Failed to join veth to namespace");
 
-                // let raw_pid = pid.as_raw();
-
-                // write_mapping(&format!("/proc/{}/uid_map", raw_pid), 0, 1000, 1)
-                //     .expect("Failed to write UID mapping");
-                // // Allow setting GID mappings by writing to /proc/[pid]/setgroups first
-                // let setgroups_path = format!("/proc/{}/setgroups", raw_pid);
-                // let mut setgroups_file = OpenOptions::new()
-                //     .write(true)
-                //     .open(&setgroups_path)
-                //     .expect("Failed to open setgroups file");
-                // setgroups_file
-                //     .write_all(b"deny")
-                //     .expect("Failed to write to setgroups file");
-
-                // write_mapping(&format!("/proc/{}/gid_map", raw_pid), 0, 1000, 1)
-                //     .expect("Failed to write GID mapping");
-                //////////////////////////////////////////
-
-                // give child process a chance to boot
-                // thread::sleep(time::Duration::from_millis(300));
-
-                // wait for child process
                 waitpid(pid, None).unwrap();
             }
             Err(e) => {
@@ -86,19 +120,28 @@ impl Silo for TheSilo {
             }
         }
 
-        println!("{}", format!("Container {} has exited", container_path).green());
+        println!(
+            "{}",
+            format!("Container {} has exited", container_path).bright_red()
+        );
+
+        let data: PythonOutput = serde_json::from_slice(
+            &reqwest::Client::new()
+                .get(format!("{}/output", local_container_link))
+                .header("hostname", container_name)
+                .send()
+                .await
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap(),
+        )
+        .unwrap();
 
         let reply = silo::GetPackageResponse {
-            name: 434, // We must use .into_inner() as the fields of gRPC requests and responses are private
+            output: data.output,
+            errors: "errors".to_string(),
         };
-
-        Ok(Response::new(reply)) // Send back our formatted greeting
+        Ok(Response::new(reply))
     }
-}
-
-fn write_mapping(path: &str, inside_id: u32, outside_id: u32, length: u32) -> std::io::Result<()> {
-    let mapping = format!("{} {} {}\n", inside_id, outside_id, length);
-    let mut file = OpenOptions::new().write(true).open(path)?;
-    file.write_all(mapping.as_bytes())?;
-    Ok(())
 }

@@ -3,7 +3,7 @@ use std::path::Path;
 use nix::{
     mount::{mount, umount2, MntFlags, MsFlags},
     sys::stat,
-    unistd::{chdir, mkdir, pivot_root as nix_pivot_root},
+    unistd::{chdir, mkdir, pivot_root},
 };
 pub fn setup_rootfs(container_path: &str) {
     mount(
@@ -41,7 +41,7 @@ pub fn setup_rootfs(container_path: &str) {
     )
     .unwrap();
 
-    match nix_pivot_root(container_path, &prev_rootfs) {
+    match pivot_root(container_path, &prev_rootfs) {
         Ok(_) => {}
         Err(e) => {
             println!("Failed to pivot root: {}", e);

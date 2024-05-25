@@ -1,5 +1,6 @@
 import time
 import silo
+import concurrent.futures
 
 # [::1]:50051 is the default address of the Silo server
 server = silo.Server("localhost:50051", api_key="your_api_key_here")
@@ -7,14 +8,10 @@ server = silo.Server("localhost:50051", api_key="your_api_key_here")
 
 @server.function()
 def hello(name):
-    import time
-    import socket
-    import os
-    import sys
 
-    # print(f"Hello, {name}!")
+    print(f"Hello, {name}!")
     # time.sleep(4)
-    # print(f"Bye, {name}!")
+    print(f"Bye, {name}!")
 
     return f"Hello, {name}!"
 
@@ -25,6 +22,10 @@ def main():
     result = hello.remote("Remote")
     print(f"Time taken ms: {round((time.time() - start_time) * 1000, 2)}")
     print(result)
+
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     results = list(executor.map(hello.remote, ["remote", "gg"]))
+    # print(results)
 
 
 # Run by - silo launch hello.py
