@@ -9,9 +9,9 @@ server = silo.Server("localhost:50051", api_key="your_api_key_here")
 @server.function()
 def hello(name):
 
-    print(f"Hello, {name}!")
-    # time.sleep(4)
-    print(f"Bye, {name}!")
+    # print(f"Hello, {name}!")
+    # time.sleep(20)
+    # print(f"Bye, {name}!")
 
     return f"Hello, {name}!"
 
@@ -19,15 +19,23 @@ def hello(name):
 @server.entry()
 def main():
     start_time = time.time()
-    result = hello.remote("Remote")
-    print(f"Time taken ms: {round((time.time() - start_time) * 1000, 2)}")
-    print(result)
-
-    # with concurrent.futures.ThreadPoolExecutor() as executor:
-    #     results = list(executor.map(hello.remote, ["remote", "gg"]))
-    # print(results)
+    try:
+        # result = hello.remote("Remote")
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            result = list(
+                executor.map(
+                    hello.remote,
+                    ["remote"] * 1,
+                )
+            )
+        print(f"Time taken ms: {round((time.time() - start_time) * 1000, 2)}")
+        print(result)
+    except Exception as e:
+        print(e)
+        time.sleep(50)
 
 
 # Run by - silo launch hello.py
 
 # Currently - python examples/silo/cli.py launch examples/hello.py
+# python examples/silo/cli.py build examples/hello.py

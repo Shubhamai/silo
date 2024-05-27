@@ -6,9 +6,17 @@ mod net;
 
 use clap::Command;
 use colored::*;
+use dashmap::DashMap;
 use grpc::{silo::silo_server::SiloServer, TheSilo};
 
-use http::http_server;
+use http::HttpServer;
+use hyper::{
+    server::{self, conn::http1},
+    service::service_fn,
+};
+use hyper_util::rt::TokioIo;
+use tokio::net::TcpListener;
+// use http::http_server;
 use tonic::transport::Server;
 
 #[tokio::main]
@@ -23,7 +31,51 @@ async fn main() {
 
     match matches.subcommand() {
         Some(("facility", _)) => {
-            http_server("0.0.0.0:8080".to_string());
+            // http_server("0.0.0.0:8081".to_string());
+
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+
+                rt.block_on(async {
+                    let serv = std::sync::Arc::new(HttpServer {
+                        address: "0.0.0.0:8081".to_string(),
+                        python_input_data: DashMap::new(),
+                        python_result_data: DashMap::new(),
+                    });
+
+                    let listener = TcpListener::bind(serv.address.clone()).await.unwrap();
+                    println!(
+                        "{}",
+                        format!("HTTP server listening on {}...", serv.address).blue()
+                    );
+
+                    loop {
+                        // println!("{}", "Waiting for a connection...".green());
+
+                        let (stream, _) = listener.accept().await.unwrap();
+                        let io = TokioIo::new(stream);
+
+                        let serv = serv.clone();
+                        let make_service = service_fn(move |r| {
+                            let serv = serv.clone();
+
+                            async move { serv.handle(r).await }
+                        });
+
+                        tokio::task::spawn(async move {
+                            if let Err(err) = http1::Builder::new()
+                                .serve_connection(io, make_service)
+                                .await
+                            {
+                                println!(
+                                    "{}",
+                                    format!("Error serving connection: {:?}", err).red()
+                                );
+                            }
+                        });
+                    }
+                })
+            });
 
             Server::builder()
                 .add_service(SiloServer::new(TheSilo {}))
