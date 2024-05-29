@@ -37,5 +37,6 @@ def main():
 
 # Run by - silo launch hello.py
 
+# clear && cargo build --release && time sudo ./target/release/silo facility
 # Currently - python examples/silo/cli.py launch examples/hello.py
 # python examples/silo/cli.py build examples/hello.py

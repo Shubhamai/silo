@@ -2,7 +2,6 @@ mod grpc;
 mod http;
 mod mount;
 mod namespace;
-mod net;
 
 use clap::Command;
 use colored::*;
@@ -10,13 +9,9 @@ use dashmap::DashMap;
 use grpc::{silo::silo_server::SiloServer, TheSilo};
 
 use http::HttpServer;
-use hyper::{
-    server::{self, conn::http1},
-    service::service_fn,
-};
+use hyper::{server::conn::http1, service::service_fn};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
-// use http::http_server;
 use tonic::transport::Server;
 
 #[tokio::main]
@@ -31,14 +26,14 @@ async fn main() {
 
     match matches.subcommand() {
         Some(("facility", _)) => {
-            // http_server("0.0.0.0:8081".to_string());
-
             std::thread::spawn(move || {
+                const HTTP_SERVER_ADDRESS: &str = "0.0.0.0:8081";
+
                 let rt = tokio::runtime::Runtime::new().unwrap();
 
                 rt.block_on(async {
                     let serv = std::sync::Arc::new(HttpServer {
-                        address: "0.0.0.0:8081".to_string(),
+                        address: HTTP_SERVER_ADDRESS.to_string(),
                         python_input_data: DashMap::new(),
                         python_result_data: DashMap::new(),
                     });
@@ -50,8 +45,6 @@ async fn main() {
                     );
 
                     loop {
-                        // println!("{}", "Waiting for a connection...".green());
-
                         let (stream, _) = listener.accept().await.unwrap();
                         let io = TokioIo::new(stream);
 
