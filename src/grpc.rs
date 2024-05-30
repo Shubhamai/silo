@@ -8,21 +8,11 @@ use silo::{GetPackageRequest, GetPackageResponse};
 
 use colored::*;
 
+use crate::http;
 use crate::namespace;
+
 pub mod silo {
     tonic::include_proto!("silo");
-}
-
-#[derive(Encode, Decode, PartialEq, Debug, Clone, Deserialize, Serialize)]
-pub struct PythonInput {
-    pub func: Vec<u8>,
-    pub args: Vec<u8>,
-    pub kwargs: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PythonOutput {
-    pub output: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -45,13 +35,15 @@ impl Silo for TheSilo {
         let host_link = "http://0.0.0.0:8081".to_owned();
 
         let request_data = request.into_inner();
+        let request_id = rand::random::<i32>();
 
         // send the data to the HTTP server
-        reqwest::Client::new()
-            .put(format!("{}/data", host_link))
+        let to_launch = reqwest::Client::new()
+            .put(format!("{}/tasks", host_link))
             .body(
                 bincode::encode_to_vec(
-                    PythonInput {
+                    http::PythonInput {
+                        request_id,
                         func: request_data.func.clone(),
                         args: request_data.args.clone(),
                         kwargs: request_data.kwargs.clone(),
@@ -64,64 +56,71 @@ impl Silo for TheSilo {
             .send()
             .await
             .unwrap();
+        match to_launch.text().await.unwrap().as_str() {
+            "launch" => {
+                // check if the container path exists
+                if !std::path::Path::new(&container_path).exists() {
+                    panic!("Container does not exist");
+                }
 
-        // check if the container path exists
-        if !std::path::Path::new(&container_path).exists() {
-            panic!("Container does not exist");
-        }
-
-        println!(
-            "{}",
-            format!("Running {}...", container_name).bright_yellow()
-        );
-
-        let child_pid = namespace::create_child(
-            container_path,
-            mount_path,
-            container_name.clone(),
-            host_link.clone(),
-        );
-
-        match child_pid {
-            Ok(pid) => {
                 println!(
                     "{}",
-                    format!("Container {} is running with PID {}", container_name, pid).green()
+                    format!("Running {}...", container_name).bright_yellow()
                 );
 
-                waitpid(pid, None).unwrap();
-            }
-            Err(e) => {
-                println!(
-                    "{}",
-                    format!("Failed to run container {}: {}", container_name, e).red()
+                let child_pid = namespace::create_child(
+                    container_path,
+                    mount_path,
+                    container_name.clone(),
+                    host_link.clone(),
                 );
+
+                match child_pid {
+                    Ok(pid) => {
+                        // println!(
+                        //     "{}",
+                        //     format!("Container {} is running with PID {}", container_name, pid)
+                        //         .green()
+                        // );
+
+                        waitpid(pid, None).unwrap();
+                    }
+                    Err(e) => {
+                        println!(
+                            "{}",
+                            format!("Failed to run container {}: {}", container_name, e).red()
+                        );
+                    }
+                }
+
+                // println!(
+                //     "{}",
+                //     format!("Container {} has exited", container_name).bright_red()
+                // );
+            }
+            _ => {
+                println!("Using Existing Container");
             }
         }
 
-        println!(
-            "{}",
-            format!("Container {} has exited", container_name).bright_red()
-        );
+        let output_response_data = reqwest::Client::new()
+            .get(format!("{}/output", host_link))
+            .header("hostname", container_name)
+            .header("request_id", request_id)
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
 
-        let data: PythonOutput = serde_json::from_slice(
-            &reqwest::Client::new()
-                .get(format!("{}/output", host_link))
-                .header("hostname", container_name)
-                .send()
-                .await
-                .unwrap()
-                .bytes()
-                .await
-                .unwrap(),
-        )
-        .unwrap();
+        let data: http::PythonOutput = serde_json::from_slice(&output_response_data).unwrap();
 
         // delete the container
         std::fs::remove_dir_all(mount_path).unwrap();
 
         let reply = silo::GetPackageResponse {
-            output: data.output,
+            output: data.output, //vec![1], //data.output,
             errors: "errors".to_string(),
         };
         Ok(Response::new(reply))

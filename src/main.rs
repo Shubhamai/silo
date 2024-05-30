@@ -5,7 +5,7 @@ mod namespace;
 
 use clap::Command;
 use colored::*;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use grpc::{silo::silo_server::SiloServer, TheSilo};
 
 use http::HttpServer;
@@ -34,8 +34,9 @@ async fn main() {
                 rt.block_on(async {
                     let serv = std::sync::Arc::new(HttpServer {
                         address: HTTP_SERVER_ADDRESS.to_string(),
-                        python_input_data: DashMap::new(),
-                        python_result_data: DashMap::new(),
+                        containers: DashMap::new(),
+                        tasks: DashSet::new(),
+                        results: DashMap::new(),
                     });
 
                     let listener = TcpListener::bind(serv.address.clone()).await.unwrap();

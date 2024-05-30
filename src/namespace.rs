@@ -29,34 +29,38 @@ import socket
 
 start = time.perf_counter()
 
-url = "{host_link}/data"
-response = requests.get(url, headers={{"hostname": socket.gethostname()}})
+requests.put("{host_link}/containers", headers={{"hostname": socket.gethostname(), "container_id": socket.gethostname(), "is_free": "false"}})
 
-if response.status_code == 200:
-    res = response.json()
+while True:
+    url = "{host_link}/tasks"
+    response = requests.get(url, headers={{"hostname": socket.gethostname()}})
+    if response.status_code == 200:
+        res = response.json()
 
-    func = cloudpickle.loads(
-        bytes.fromhex("".join(format(x, "02x") for x in res["func"]))
-    )
-    args = cloudpickle.loads(
-        bytes.fromhex("".join(format(x, "02x") for x in res["args"]))
-    )
-    kwargs = cloudpickle.loads(
-        bytes.fromhex("".join(format(x, "02x") for x in res["kwargs"]))
-    )
-    output = func(*args, **kwargs)
+        func = cloudpickle.loads(
+            bytes.fromhex("".join(format(x, "02x") for x in res["func"]))
+        )
+        args = cloudpickle.loads(
+            bytes.fromhex("".join(format(x, "02x") for x in res["args"]))
+        )
+        kwargs = cloudpickle.loads(
+            bytes.fromhex("".join(format(x, "02x") for x in res["kwargs"]))
+        )
+        output = func(*args, **kwargs)
 
-    result = cloudpickle.dumps(output)
+        result = cloudpickle.dumps(output)
+        data = {{'output': list(result)}}
+        response = requests.put("{host_link}/output", json=data, headers={{"hostname": socket.gethostname(), "request_id": str(res["request_id"])}})
 
-    data = {{'output': list(result)}}
-
-    response = requests.put("{host_link}/output", json=data, headers={{"hostname": socket.gethostname()}})    
-    end = time.perf_counter() - start
-    print(f"Python time taken: {{end * 1000:.2f}}ms")
+        requests.put("{host_link}/containers", headers={{"hostname": socket.gethostname(), "container_id": socket.gethostname(), "is_free": "true"}})
 
 
-else:
-    print("Failed with status code:", response.status_code)    
+    else:
+        end = time.perf_counter() - start
+        print(f"Python time taken: {{end * 1000:.2f}}ms")
+
+        requests.delete("{host_link}/containers", headers={{"hostname": socket.gethostname(), "container_id": socket.gethostname()}})
+        break
 "#,
 host_link = host_link
     );
@@ -67,16 +71,16 @@ host_link = host_link
     let mut script_file = File::create(script_path).unwrap();
     script_file.write_all(script.as_bytes()).unwrap();
 
-    // let python = CString::new("/opt/bitnami/python/bin/python").unwrap();
-    // let script_cstr = CString::new(script_path).unwrap();
-    // execvp(&python, &[python.clone(), script_cstr]).unwrap();
+    let python = CString::new("/opt/bitnami/python/bin/python").unwrap();
+    let script_cstr = CString::new(script_path).unwrap();
+    execvp(&python, &[python.clone(), script_cstr]).unwrap();
 
 
     ///////////////////////////////////////////////////////////////////////////
 
     // run /bin/bash
-    let bash = CString::new("/bin/bash").unwrap();
-    execvp(&bash, &[bash.clone()]).unwrap();
+    // let bash = CString::new("/bin/bash").unwrap();
+    // execvp(&bash, &[bash.clone()]).unwrap();
 
     // mount::umount("proc").unwrap();
 

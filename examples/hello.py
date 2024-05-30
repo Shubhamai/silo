@@ -3,7 +3,7 @@ import silo
 import concurrent.futures
 
 # [::1]:50051 is the default address of the Silo server
-server = silo.Server("localhost:50051", api_key="your_api_key_here")
+server = silo.Server(["localhost:50051", "localhost:50052"], api_key="your_api_key_here")
 
 
 @server.function()
@@ -19,13 +19,15 @@ def hello(name):
 @server.entry()
 def main():
     start_time = time.time()
+
+    # run the servers on 3 different digitalocean machines, use round robin to distribute the requests
     try:
         # result = hello.remote("Remote")
         with concurrent.futures.ThreadPoolExecutor() as executor:
             result = list(
                 executor.map(
                     hello.remote,
-                    ["remote"] * 1,
+                    ["remote"] * 30,
                 )
             )
         print(f"Time taken ms: {round((time.time() - start_time) * 1000, 2)}")
