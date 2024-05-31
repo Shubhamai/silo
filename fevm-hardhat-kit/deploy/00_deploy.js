@@ -3,7 +3,6 @@ require("hardhat-deploy-ethers")
 
 const { networkConfig } = require("../helper-hardhat-config")
 
-
 const private_key = network.config.accounts[0]
 const wallet = new ethers.Wallet(private_key, ethers.provider)
 
@@ -13,7 +12,13 @@ module.exports = async ({ deployments }) => {
     const chainId = network.config.chainId
     const tokensToBeMinted = networkConfig[chainId]["tokensToBeMinted"]
 
-    
+    // deploy silo
+    const silo = await deploy("Silo", {
+        from: wallet.address,
+        args: [],
+        log: true,
+    })
+
     //deploy Simplecoin
     const simpleCoin = await deploy("SimpleCoin", {
         from: wallet.address,
