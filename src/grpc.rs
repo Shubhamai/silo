@@ -25,6 +25,12 @@ pub struct PythonOutput {
     pub output: Vec<u8>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EncryptedData {
+    pub data: String,
+    pub key: String,
+}
+
 #[derive(Debug)]
 pub struct TheSilo {}
 
@@ -43,23 +49,38 @@ impl Silo for TheSilo {
         let mount_path = &format!("/home/elden/Downloads/{}", container_name);
         std::fs::create_dir_all(mount_path).unwrap();
         let host_link = "http://0.0.0.0:8081".to_owned();
+        let web_url = "http://localhost:3000".to_owned();
 
         let request_data = request.into_inner();
 
         // curl data from request_data.cid
-        let data_response = reqwest::Client::new()
+        let encrypted_data = reqwest::Client::new()
             .get(format!(
                 "https://gateway.lighthouse.storage/ipfs/{}",
                 request_data.cid
             ))
             .send()
             .await
+            .unwrap()
+            .text()
+            .await
             .unwrap();
 
-        // serde deserialize the data
-        let data: PythonInput =
-            serde_json::from_slice(&data_response.bytes().await.unwrap()).unwrap();
+        let decrypted_data = reqwest::Client::new()
+            .patch(format!("{web_url}/api/upload"))
+            .body(
+                serde_json::to_string(&EncryptedData {
+                    data: encrypted_data,
+                    key: request_data.key,
+                })
+                .unwrap(),
+            )
+            .send()
+            .await
+            .unwrap();
 
+        let data: PythonInput =
+            serde_json::from_slice(&decrypted_data.bytes().await.unwrap()).unwrap();
         // send the data to the HTTP server
         reqwest::Client::new()
             .put(format!("{}/data", host_link))

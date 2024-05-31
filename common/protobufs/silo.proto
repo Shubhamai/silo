@@ -7,6 +7,7 @@ service Silo {
 
 message GetPackageRequest {
     string cid = 1;
+    string key = 2;
 }
 
 message GetPackageResponse {
