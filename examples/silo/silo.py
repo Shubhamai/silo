@@ -18,6 +18,8 @@ class Server:
             channel = grpc.insecure_channel(url)
             self.client = SiloStub(channel)
         elif isinstance(url, list):
+            # NOTE: If multiple clients, then the first client is the default client
+            self.client = SiloStub(grpc.insecure_channel(url[0]))
             self.clients = [SiloStub(grpc.insecure_channel(address)) for address in url]
         else:
             raise ValueError("Invalid address, must be string or list")
@@ -37,16 +39,15 @@ class Server:
 
         return decorator
 
-    def launch(self, cid, key):
-        def get_input(*args, **kwargs):
-            request = GetPackageRequest()
-            request.cid = cid
-            request.key = key
+    def get_func(self, cid, key):
 
-            output = self.client.GetPackage(request)
-            return pickle.loads(output.output)
+        data = requests.get(f"https://gateway.lighthouse.storage/ipfs/{cid}").text
 
-        return get_input
+        response = requests.patch(
+            f"{self.web_url}/api/upload", json={"data": data, "key": key}
+        )
+
+        return RemoteFunction(self, pickle.loads(bytes(response.json()["func"])))
 
 
 class RemoteFunction:

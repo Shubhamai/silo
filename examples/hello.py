@@ -1,8 +1,8 @@
 import time
 import silo
 
-server = silo.Server(["localhost:50051", "localhost:50052"])
-# server = silo.Server("localhost:50051")
+# server = silo.Server(["localhost:50051", "localhost:50052"])
+server = silo.Server("localhost:50051")
 
 
 @server.function()
@@ -26,11 +26,11 @@ def main():
         result = hello.map(["Remote"] * 10)
 
         # Example of launching a container with a saved function data CID and key
-        # hello = server.launch(
+        # hello = server.get_func(
         #     "QmZb1sXB8hbdha3bKdTdHQmGwx5fWmYcVy5frpk5WK8KkM",
         #     "01425e7c585bf1528477ec6e2839e0c0b760481e97c18ae4f0e240e6ef7e7581",
         # )
-        # result = hello(name="Remote")
+        # result = hello.map(["sdfdsfs"] * 4)
 
         print(f"Time taken ms: {round((time.time() - start_time) * 1000, 2)}")
         print(result)
