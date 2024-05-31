@@ -5,6 +5,7 @@ from silo_pb2_grpc import SiloStub
 import grpc
 import requests
 import concurrent.futures
+import random
 
 
 class Server:
@@ -12,8 +13,14 @@ class Server:
         self.api_key = api_key
         self.web_url = "http://localhost:3000"
 
-        channel = grpc.insecure_channel(url)
-        self.client = SiloStub(channel)
+        # if url is string, then it is the address of the Silo server
+        if isinstance(url, str):
+            channel = grpc.insecure_channel(url)
+            self.client = SiloStub(channel)
+        elif isinstance(url, list):
+            self.clients = [SiloStub(grpc.insecure_channel(address)) for address in url]
+        else:
+            raise ValueError("Invalid address, must be string or list")
 
     def function(self):
         def decorator(func):
@@ -48,11 +55,13 @@ class RemoteFunction:
         self.func = func
 
     def _make_request(self, endpoint, request=None):
-        headers = {}
-        if self.server.api_key:
-            headers["X-API-Key"] = self.server.api_key
+        # if multiple clients, then select a random client
+        if hasattr(self.server, "clients"):
+            client = random.choice(self.server.clients)
+        else:
+            client = self.server.client
 
-        response = self.server.client.GetPackage(request)
+        response = client.GetPackage(request)
 
         return response
 

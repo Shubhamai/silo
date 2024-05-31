@@ -1,8 +1,8 @@
 import time
 import silo
 
-# [::1]:50051 is the default address of the Silo server
-server = silo.Server("localhost:50051", api_key="your_api_key_here")
+server = silo.Server(["localhost:50051", "localhost:50052"])
+# server = silo.Server("localhost:50051")
 
 
 @server.function()
@@ -23,14 +23,14 @@ def main():
         # result = hello.remote("Remote")
 
         # Example of launching multiple containers
-        # result = hello.map(["Remote"] * 10)
+        result = hello.map(["Remote"] * 10)
 
         # Example of launching a container with a saved function data CID and key
-        hello = server.launch(
-            "QmZb1sXB8hbdha3bKdTdHQmGwx5fWmYcVy5frpk5WK8KkM",
-            "01425e7c585bf1528477ec6e2839e0c0b760481e97c18ae4f0e240e6ef7e7581",
-        )
-        result = hello(name="Remote")
+        # hello = server.launch(
+        #     "QmZb1sXB8hbdha3bKdTdHQmGwx5fWmYcVy5frpk5WK8KkM",
+        #     "01425e7c585bf1528477ec6e2839e0c0b760481e97c18ae4f0e240e6ef7e7581",
+        # )
+        # result = hello(name="Remote")
 
         print(f"Time taken ms: {round((time.time() - start_time) * 1000, 2)}")
         print(result)
@@ -44,3 +44,4 @@ def main():
 # clear && cargo build --release && time sudo ./target/release/silo facility
 # Currently - python examples/silo/cli.py launch examples/hello.py
 # python examples/silo/cli.py build examples/hello.py
+# sudo ./silo facility --grpc-port 50052 --http-port 8001
