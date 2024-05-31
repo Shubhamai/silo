@@ -3,11 +3,13 @@ import pickle
 from silo_pb2 import GetPackageRequest
 from silo_pb2_grpc import SiloStub
 import grpc
+import requests
 
 
 class Server:
     def __init__(self, url, api_key=None):
         self.api_key = api_key
+        self.web_url = "http://localhost:3000"
 
         channel = grpc.insecure_channel(url)
         self.client = SiloStub(channel)
@@ -42,27 +44,26 @@ class RemoteFunction:
 
         return response
 
+    def _upload_data(self, data):
+        response = requests.post(f"{self.server.web_url}/api/upload", json=data)
+        return response.json()
+
     def remote(self, *args, **kwargs):
+        data = {
+            "func": list(cloudpickle.dumps(self.func)),
+            "args": list(cloudpickle.dumps(args)),
+            "kwargs": list(cloudpickle.dumps(kwargs)),
+        }
+
+        response = self._upload_data(data)
+        # response = {"data": {"Hash": "QmQEyPkmVffrSe8WTNhjLdo58BFyDvBDq6HLRwfwdeaYwm"}}
 
         request = GetPackageRequest()
-        request.func = cloudpickle.dumps(self.func)
+        request.cid = response["data"]["Hash"]
 
-        # Serialize and add arguments to the request
-        # for arg in args:
-        #     request.args.append(cloudpickle.dumps(arg))
-        request.args = cloudpickle.dumps(args)
+        output = self._make_request("execute", request)
 
-        request.kwargs = cloudpickle.dumps(kwargs)
-
-        # Serialize and add keyword arguments to the request
-        # for key, value in kwargs.items():
-        #     request.kwargs[key] = cloudpickle.dumps(value)
-
-        response = self._make_request("execute", request)
-
-        # print(response.errors)
-
-        return pickle.loads(response.output)
+        return pickle.loads(output.output)
 
     def local(self, *args, **kwargs):
         function_code = cloudpickle.dumps(self.func)

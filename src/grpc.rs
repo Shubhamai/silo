@@ -46,20 +46,24 @@ impl Silo for TheSilo {
 
         let request_data = request.into_inner();
 
+        // curl data from request_data.cid
+        let data_response = reqwest::Client::new()
+            .get(format!(
+                "https://gateway.lighthouse.storage/ipfs/{}",
+                request_data.cid
+            ))
+            .send()
+            .await
+            .unwrap();
+
+        // serde deserialize the data
+        let data: PythonInput =
+            serde_json::from_slice(&data_response.bytes().await.unwrap()).unwrap();
+
         // send the data to the HTTP server
         reqwest::Client::new()
             .put(format!("{}/data", host_link))
-            .body(
-                bincode::encode_to_vec(
-                    PythonInput {
-                        func: request_data.func.clone(),
-                        args: request_data.args.clone(),
-                        kwargs: request_data.kwargs.clone(),
-                    },
-                    bincode::config::standard(),
-                )
-                .unwrap(),
-            )
+            .body(bincode::encode_to_vec(data, bincode::config::standard()).unwrap())
             .header("hostname", container_name.clone())
             .send()
             .await
@@ -121,7 +125,7 @@ impl Silo for TheSilo {
         std::fs::remove_dir_all(mount_path).unwrap();
 
         let reply = silo::GetPackageResponse {
-            output: data.output,
+            output: data.output, //vec![1], //data.output,
             errors: "errors".to_string(),
         };
         Ok(Response::new(reply))

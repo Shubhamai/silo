@@ -6,17 +6,11 @@ service Silo {
 }
 
 message GetPackageRequest {
-    int32 id = 1;
-    bytes func = 2;
-    // repeated bytes args = 3;
-    // map<string, bytes> kwargs = 4;
-    bytes args = 3;
-    bytes kwargs = 4;
+    string cid = 1;
 }
 
 message GetPackageResponse {
     bytes output = 2;
-
     string errors = 3;
 }
 

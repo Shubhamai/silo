@@ -67,16 +67,16 @@ host_link = host_link
     let mut script_file = File::create(script_path).unwrap();
     script_file.write_all(script.as_bytes()).unwrap();
 
-    // let python = CString::new("/opt/bitnami/python/bin/python").unwrap();
-    // let script_cstr = CString::new(script_path).unwrap();
-    // execvp(&python, &[python.clone(), script_cstr]).unwrap();
+    let python = CString::new("/opt/bitnami/python/bin/python").unwrap();
+    let script_cstr = CString::new(script_path).unwrap();
+    execvp(&python, &[python.clone(), script_cstr]).unwrap();
 
 
     ///////////////////////////////////////////////////////////////////////////
 
     // run /bin/bash
-    let bash = CString::new("/bin/bash").unwrap();
-    execvp(&bash, &[bash.clone()]).unwrap();
+    // let bash = CString::new("/bin/bash").unwrap();
+    // execvp(&bash, &[bash.clone()]).unwrap();
 
     // mount::umount("proc").unwrap();
 
