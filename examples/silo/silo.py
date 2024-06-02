@@ -5,7 +5,7 @@ from silo_pb2_grpc import SiloStub
 import grpc
 import requests
 import concurrent.futures
-import random
+import numpy as np
 
 
 class Server:
@@ -58,7 +58,7 @@ class RemoteFunction:
     def _make_request(self, endpoint, request=None):
         # if multiple clients, then select a random client
         if hasattr(self.server, "clients"):
-            client = random.choice(self.server.clients)
+            client = np.random.choice(self.server.clients)
         else:
             client = self.server.client
 
@@ -71,6 +71,9 @@ class RemoteFunction:
         return response.json()
 
     def remote(self, *args, **kwargs):
+        # Verify computation with local computation randomly
+        verify_compute = np.random.rand() > 0.9
+
         data = {
             "func": list(cloudpickle.dumps(self.func)),
             "args": list(cloudpickle.dumps(args)),
@@ -87,11 +90,18 @@ class RemoteFunction:
         request.cid = response["hash"]
         request.key = response["key"]
 
-        print(f"CID: {request.cid} Key: {request.key}")
+        # print(f"CID: {request.cid} Key: {request.key}")
 
         output = self._make_request("execute", request)
 
-        return pickle.loads(output.output)
+        unpickled_output = pickle.loads(output.output)
+
+        if verify_compute:
+            assert unpickled_output == self.local(
+                *args, **kwargs
+            ), "Computation from server is incorrect"
+
+        return unpickled_output
 
     def map(self, inputs):
         with concurrent.futures.ThreadPoolExecutor() as executor:

@@ -2,21 +2,36 @@
 pragma solidity 0.8.17;
 
 contract Silo {
-    uint256 public count;
+    mapping(address => string) public Providers;
+    address[] private keys;
 
-    // Function to get the current count
-    function get() public view returns (uint256) {
-        return count;
+    function get() public view returns (address[] memory, string[] memory) {
+        // return Providers[addr];
+
+        string[] memory values = new string[](keys.length);
+        for (uint i = 0; i < keys.length; i++) {
+            values[i] = Providers[keys[i]];
+        }
+        return (keys, values);
     }
 
-    // Function to increment count by 1
-    function inc() public {
-        count += 1;
+    function set(string memory addr) public {
+        if (bytes(Providers[msg.sender]).length == 0) {
+            keys.push(msg.sender);
+        }
+
+        Providers[msg.sender] = addr;
     }
 
-    // Function to decrement count by 1
-    function dec() public {
-        // This function will fail if count = 0
-        count -= 1;
+    function remove() public {
+        delete Providers[msg.sender];
+
+        for (uint i = 0; i < keys.length; i++) {
+            if (keys[i] == msg.sender) {
+                keys[i] = keys[keys.length - 1];
+                keys.pop();
+                break;
+            }
+        }
     }
 }

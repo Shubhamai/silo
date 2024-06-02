@@ -10,7 +10,8 @@ def run_script(script_path):
     if hasattr(module, "main"):
         module.main()
     else:
-        print("No 'main' function found in the script.")
+        pass
+        # print("No 'main' function found in the script.")
 
 
 def main():

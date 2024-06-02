@@ -52,7 +52,7 @@ if response.status_code == 200:
 
     response = requests.put("{host_link}/output", json=data, headers={{"hostname": socket.gethostname()}})    
     end = time.perf_counter() - start
-    print(f"Python time taken: {{end * 1000:.2f}}ms")
+    #print(f"Python time taken: {{end * 1000:.2f}}ms")
 
 
 else:

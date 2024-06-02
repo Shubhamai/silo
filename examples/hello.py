@@ -7,6 +7,7 @@ server = silo.Server("localhost:50051")
 
 @server.function()
 def hello(name):
+    # import numpy
 
     # print(f"Hello, {name}!")
     # time.sleep(20)
@@ -15,22 +16,28 @@ def hello(name):
     return f"Hello, {name}!"
 
 
+# result = hello.remote("World")
+# result = hello.map(["Remote"] * 10)
+# print(result)
+
 @server.entry()
 def main():
     start_time = time.time()
     try:
         # Example of launching a single container
-        # result = hello.remote("Remote")
+        # result = hello.remote("World")
 
-        # Example of launching multiple containers
-        result = hello.map(["Remote"] * 10)
+        # Example of launching multiple containers in multiple compute providers
+        result = hello.map(f"World {i}" for i in range(10))
 
         # Example of launching a container with a saved function data CID and key
         # hello = server.get_func(
-        #     "QmZb1sXB8hbdha3bKdTdHQmGwx5fWmYcVy5frpk5WK8KkM",
-        #     "01425e7c585bf1528477ec6e2839e0c0b760481e97c18ae4f0e240e6ef7e7581",
+        #     "QmWfUGByP4yzVQsB3U2AJvcNMyp7TXrmt6MapdCzgiqdhC",
+        #     "bd142c6df1cddd01fb540bb04d210f8808fb8e9443a390859d2fcddaa9e2586e",
         # )
-        # result = hello.map(["sdfdsfs"] * 4)
+        # result = hello.map(["sdfdsfs"] * 10)
+        # result = hello.remote("Remote")
+        # result = hello.local("Local")
 
         print(f"Time taken ms: {round((time.time() - start_time) * 1000, 2)}")
         print(result)
