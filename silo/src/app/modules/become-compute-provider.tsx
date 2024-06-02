@@ -50,13 +50,13 @@ export const BecomeComputeProvider = () => {
       abi: SiloABI.abi,
       functionName: "set",
       // args: [BigInt(data.address), BigInt(data.ip)],
-      args: [BigInt(data.ip)],
+      args: [data.ip],
     });
   };
 
   return (
     <>
-      <p className="text-foreground/80">
+      {/* <p className="text-foreground/80">
         run the following command in your terminal to install the silo
       </p>
 
@@ -66,7 +66,7 @@ export const BecomeComputeProvider = () => {
         </p>
 
         <CopyButton textToCopy={`curl sh -c "$(curl -fsSL https://silo.sh)"`} />
-      </div>
+      </div> */}
 
       <h2 className="mt-8 text-2xl">## Add yourself to Providers List</h2>
 
