@@ -2,6 +2,11 @@
 name = "silo"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Self deployable, serverless computing platform"
+homepage = "https://github.com/shubhamai"
+repository = "https://github.com/shubhamai/silo"
+readme = "README.md"
 
 [dependencies]
 bincode = "2.0.0-rc.3"
