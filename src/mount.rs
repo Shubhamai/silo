@@ -6,7 +6,6 @@ use nix::{
     unistd::{chdir, mkdir, pivot_root},
 };
 
-
 // From https://github.com/managarm/cbuildrt/blob/main/src/main.rs#L57
 fn concat_absolute<L: AsRef<Path>, R: AsRef<Path>>(lhs: L, rhs: R) -> PathBuf {
     lhs.as_ref().join(rhs.as_ref().strip_prefix("/").unwrap())
@@ -27,8 +26,10 @@ pub fn setup_rootfs(container_path: &str, mount_path: &str, container_name: &str
     }
 
     // From https://github.com/managarm/cbuildrt/blob/main/src/main.rs#L57
-    let dev_overlays = vec!["tty", "null", "zero", "full", "random", "urandom"];
+    let dev_overlays = vec!["tty", "null", "zero", "full", "random", "urandomsds"];
     for f in dev_overlays {
+
+        // if mount fails, print error message, but continue
         nix::mount::mount(
             Some(&Path::new("/dev/").join(f)),
             &concat_absolute(mount_path, "/dev/").join(f),
@@ -36,7 +37,10 @@ pub fn setup_rootfs(container_path: &str, mount_path: &str, container_name: &str
             nix::mount::MsFlags::MS_BIND,
             None::<&str>,
         )
-        .expect("failed to mount device");
+        .unwrap_or_else(
+            |e| println!("Failed to mount /dev/{}: {}", f, e)
+        )
+        
     }
 
     nix::mount::mount(
@@ -99,7 +103,7 @@ pub fn setup_rootfs(container_path: &str, mount_path: &str, container_name: &str
         Some("tmpfs"),
         MsFlags::MS_NOSUID | MsFlags::MS_RELATIME,
         None::<&str>,
-    )   
+    )
     .unwrap();
 
     let prev_rootfs = Path::new(mount_path).join(format!(".oldroot{}", container_name));

@@ -26,7 +26,10 @@ pub struct PythonOutput {
 }
 
 #[derive(Debug)]
-pub struct TheSilo {}
+pub struct TheSilo {
+    pub container_path: String,
+    pub host_link: String,
+}
 
 #[tonic::async_trait]
 impl Silo for TheSilo {
@@ -37,18 +40,15 @@ impl Silo for TheSilo {
         // clear the terminal screen and reset the cursor to the top-left position
         print!("\x1B[2J\x1B[1;1H");
 
-        // let container_path = sub_m.get_one::<String>("CONTAINER").unwrap();
-        let container_path = "/home/elden/Downloads/python";
         let container_name = format!("container-{}", rand::random::<u32>());
-        let mount_path = &format!("/home/elden/Downloads/{}", container_name);
+        let mount_path = &format!("/tmp/{}", container_name);
         std::fs::create_dir_all(mount_path).unwrap();
-        let host_link = "http://0.0.0.0:8081".to_owned();
 
         let request_data = request.into_inner();
 
         // send the data to the HTTP server
         reqwest::Client::new()
-            .put(format!("{}/data", host_link))
+            .put(format!("{}/data", self.host_link))
             .body(
                 bincode::encode_to_vec(
                     PythonInput {
@@ -66,7 +66,7 @@ impl Silo for TheSilo {
             .unwrap();
 
         // check if the container path exists
-        if !std::path::Path::new(&container_path).exists() {
+        if !std::path::Path::new(&self.container_path).exists() {
             panic!("Container does not exist");
         }
 
@@ -76,10 +76,10 @@ impl Silo for TheSilo {
         );
 
         let child_pid = namespace::create_child(
-            container_path,
+            &self.container_path.clone(),
             mount_path,
             container_name.clone(),
-            host_link.clone(),
+            self.host_link.clone(),
         );
 
         match child_pid {
@@ -106,7 +106,7 @@ impl Silo for TheSilo {
 
         let data: PythonOutput = serde_json::from_slice(
             &reqwest::Client::new()
-                .get(format!("{}/output", host_link))
+                .get(format!("{}/output", self.host_link))
                 .header("hostname", container_name)
                 .send()
                 .await

@@ -4,6 +4,8 @@ from silo_pb2 import GetPackageRequest
 from silo_pb2_grpc import SiloStub
 import grpc
 
+import concurrent.futures
+
 
 class Server:
     def __init__(self, url, api_key=None):
@@ -26,6 +28,14 @@ class Server:
             return wrapper
 
         return decorator
+
+    def get_func(self, cid, key):
+
+        print("TODO: Implement get_func")
+
+        # return RemoteFunction(self, pickle.loads(bytes(response.json()["func"])))
+
+        pass
 
 
 class RemoteFunction:
@@ -63,6 +73,18 @@ class RemoteFunction:
         # print(response.errors)
 
         return pickle.loads(response.output)
+
+
+    def map(self, inputs):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            result = list(
+                executor.map(
+                    self.remote,
+                    inputs,
+                )
+            )
+
+        return result
 
     def local(self, *args, **kwargs):
         function_code = cloudpickle.dumps(self.func)

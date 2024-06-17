@@ -21,19 +21,43 @@ async fn main() {
         .version(env!("CARGO_PKG_VERSION"))
         .about("[WIP] Build and deploy containers in seconds")
         .subcommand_required(true)
-        .subcommand(Command::new("facility").about("Run the facility to launch containers"))
+        .subcommand(
+            Command::new("facility")
+                .about("Run the facility to launch containers")
+                .args(&[
+                    clap::Arg::new("gp")
+                        .long("grpc-port")
+                        .help("The port to run the gRPC server on")
+                        .default_value("50051"),
+                    clap::Arg::new("hp")
+                        .long("http-port")
+                        .help("The port to run the HTTP server on")
+                        .default_value("8000"),
+                    clap::Arg::new("container-path")
+                        .long("container-path")
+                        .help("The path to the container directory")
+                        .default_value("/home/elden/Downloads/python"),
+                ]),
+        )
         .get_matches();
 
     match matches.subcommand() {
-        Some(("facility", _)) => {
-            std::thread::spawn(move || {
-                const HTTP_SERVER_ADDRESS: &str = "0.0.0.0:8081";
+        Some(("facility", sub_matches)) => {
+            let grpc_port: String = sub_matches.get_one::<String>("gp").unwrap().clone();
+            let http_port: String = sub_matches.get_one::<String>("hp").unwrap().clone();
 
+            let grpc_server_addr: &String = &format!("0.0.0.0:{}", grpc_port); // [::1]
+            let http_server_addr = format!("0.0.0.0:{}", &http_port);
+            // const CONTAINER_PATH: &str = "/home/elden/Downloads/python";
+            let container_path: &str = sub_matches.get_one::<String>("container-path").unwrap();
+
+            let thread_http_server_address = http_server_addr.clone();
+            std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().unwrap();
 
                 rt.block_on(async {
                     let serv = std::sync::Arc::new(HttpServer {
-                        address: HTTP_SERVER_ADDRESS.to_string(),
+                        address: thread_http_server_address.to_string(),
                         python_input_data: DashMap::new(),
                         python_result_data: DashMap::new(),
                     });
@@ -70,9 +94,16 @@ async fn main() {
                 })
             });
 
+            println!(
+                "{}",
+                format!("gRPC server listening on {}...", grpc_server_addr).blue()
+            );
             Server::builder()
-                .add_service(SiloServer::new(TheSilo {}))
-                .serve("[::1]:50051".parse().unwrap())
+                .add_service(SiloServer::new(TheSilo {
+                    container_path: container_path.to_string(),
+                    host_link: format!("http://{}", http_server_addr),
+                }))
+                .serve(grpc_server_addr.parse().unwrap())
                 .await
                 .unwrap();
         }
