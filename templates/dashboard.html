@@ -8,12 +8,12 @@
         <th>args</th>
         <th>kwargs</th>
     </tr>
-    {% for input in inputs %}
+    {% for task in tasks %}
     <tr>
-        <td>{{ input.hostname }}</td>
-        <td>{{ input.func }}</td>
-        <td>{{ input.args }}</td>
-        <td>{{ input.kwargs }}</td>
+        <td>{{ task.id }}</td>
+        <td>{{ task.func }}</td>
+        <td>{{ task.args }}</td>
+        <td>{{ task.kwargs }}</td>
     </tr>
     {% endfor %}
 

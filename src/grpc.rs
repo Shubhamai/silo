@@ -1,32 +1,15 @@
+use crate::container::create_container;
+use crate::db::{Container, ContainerStatus, Function, Output, Task};
 use bincode::{Decode, Encode};
 use chrono::Utc;
+use colored::*;
 use nix::sys::wait::waitpid;
-use serde::{Deserialize, Serialize};
-use tonic::{Request, Response, Status};
-
 use silo::silo_server::Silo;
 use silo::{GetPackageRequest, GetPackageResponse};
+use tonic::{Request, Response, Status};
 
-use colored::*;
-
-use crate::db::{Container, ContainerStatus};
-use crate::namespace;
 pub mod silo {
     tonic::include_proto!("silo");
-}
-
-#[derive(Encode, Decode, PartialEq, Debug, Clone, Deserialize, Serialize)]
-pub struct PythonInput {
-    pub func: Vec<u8>,
-    pub args: Vec<u8>,
-    pub kwargs: Vec<u8>,
-    pub hostname: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PythonOutput {
-    pub output: Vec<u8>,
-    pub hostname: String,
 }
 
 #[derive(Debug)]
@@ -52,24 +35,34 @@ impl Silo for TheSilo {
 
         let request_data = request.into_inner();
 
-        // send the data to the HTTP server
+        // save function to the database
         reqwest::Client::new()
-            .put(format!("{}/api/inputs", self.host_link))
-            .json(
-                // bincode::encode_to_vec(
-                &PythonInput {
-                    func: request_data.func.clone(),
-                    args: request_data.args.clone(),
-                    kwargs: request_data.kwargs.clone(),
-                    hostname: container_name.clone(),
-                },
-                //     bincode::config::standard(),
-                // )
-                // .unwrap(),
-            )
-            // .header("hostname", container_name.clone())
+            .post(format!("{}/api/functions", self.host_link))
+            .json(&Function {
+                id: None,
+                name: request_data.func.clone(),
+                function: request_data.func.clone(),
+            })
             .send()
             .await
+            .unwrap();
+
+        // send the data to the HTTP server
+        let task_id = reqwest::Client::new()
+            .post(format!("{}/api/tasks", self.host_link))
+            .json(&Task {
+                id: None,
+                func: request_data.func,
+                args: request_data.args,
+                kwargs: request_data.kwargs,
+            })
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+            .parse::<i64>()
             .unwrap();
 
         // check if the container path exists
@@ -82,12 +75,24 @@ impl Silo for TheSilo {
             format!("Running {}...", container_name).bright_yellow()
         );
 
-        let child_pid = namespace::create_child(
-            &self.container_path.clone(),
-            mount_path,
-            container_name.clone(),
-            self.host_link.clone(),
+        let child_pid = create_container(
+            &self.container_path,
+            &container_name,
+            task_id,
+            &self.host_link,
         );
+
+        reqwest::Client::new()
+            .put(format!("{}/api/containers", self.host_link))
+            .json(&Container {
+                hostname: container_name.clone(),
+                status: ContainerStatus::Starting,
+                start_time: Utc::now().timestamp_millis(),
+                end_time: Utc::now().timestamp_millis(),
+            })
+            .send()
+            .await
+            .unwrap();
 
         match child_pid {
             Ok(pid) => {
@@ -97,12 +102,15 @@ impl Silo for TheSilo {
                 );
 
                 reqwest::Client::new()
-                    .put(format!("{}/api/containers", self.host_link))
+                    .patch(format!(
+                        "{}/api/containers/{}",
+                        self.host_link, container_name
+                    ))
                     .json(&Container {
                         hostname: container_name.clone(),
                         status: ContainerStatus::Running,
-                        start_time: Utc::now().timestamp(),
-                        end_time: 00000,
+                        start_time: Utc::now().timestamp_millis(),
+                        end_time: Utc::now().timestamp_millis(),
                     })
                     .send()
                     .await
@@ -111,6 +119,21 @@ impl Silo for TheSilo {
                 waitpid(pid, None).unwrap();
             }
             Err(e) => {
+                reqwest::Client::new()
+                    .patch(format!(
+                        "{}/api/containers/{}",
+                        self.host_link, container_name
+                    ))
+                    .json(&Container {
+                        hostname: container_name.clone(),
+                        status: ContainerStatus::Failed,
+                        start_time: Utc::now().timestamp_millis(),
+                        end_time: Utc::now().timestamp_millis(),
+                    })
+                    .send()
+                    .await
+                    .unwrap();
+
                 println!(
                     "{}",
                     format!("Failed to run container {}: {}", container_name, e).red()
@@ -129,36 +152,35 @@ impl Silo for TheSilo {
         );
 
         reqwest::Client::new()
-            .patch(format!("{}/api/containers", self.host_link))
+            .patch(format!(
+                "{}/api/containers/{}",
+                self.host_link, container_name
+            ))
             .json(&Container {
                 hostname: container_name.clone(),
                 status: ContainerStatus::Stopped,
-                start_time: 00000,
-                end_time: Utc::now().timestamp(),
+                start_time: Utc::now().timestamp_millis(),
+                end_time: Utc::now().timestamp_millis(),
             })
             .send()
             .await
             .unwrap();
 
-        let data: PythonOutput = serde_json::from_slice(
-            &reqwest::Client::new()
-                .get(format!("{}/api/outputs", self.host_link))
-                // .header("hostname", container_name)
-                .body(container_name)
-                .send()
-                .await
-                .unwrap()
-                .bytes()
-                .await
-                .unwrap(),
-        )
-        .unwrap();
+        let output = reqwest::Client::new()
+            .get(format!("{}/api/results/{}", self.host_link, task_id))
+            .body(container_name)
+            .send()
+            .await
+            .unwrap()
+            .json::<Output>()
+            .await
+            .unwrap();
 
         // delete the container
         std::fs::remove_dir_all(mount_path).unwrap();
 
         let reply = silo::GetPackageResponse {
-            output: data.output,
+            output: output.output,
             errors: "errors".to_string(),
         };
         Ok(Response::new(reply))

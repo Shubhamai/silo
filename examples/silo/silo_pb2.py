@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nsilo.proto\x12\x04silo\"K\n\x11GetPackageRequest\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04\x66unc\x18\x02 \x01(\x0c\x12\x0c\n\x04\x61rgs\x18\x03 \x01(\x0c\x12\x0e\n\x06kwargs\x18\x04 \x01(\x0c\"4\n\x12GetPackageResponse\x12\x0e\n\x06output\x18\x02 \x01(\x0c\x12\x0e\n\x06\x65rrors\x18\x03 \x01(\t2I\n\x04Silo\x12\x41\n\nGetPackage\x12\x17.silo.GetPackageRequest\x1a\x18.silo.GetPackageResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nsilo.proto\x12\x04silo\"K\n\x11GetPackageRequest\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04\x66unc\x18\x02 \x01(\t\x12\x0c\n\x04\x61rgs\x18\x03 \x01(\t\x12\x0e\n\x06kwargs\x18\x04 \x01(\t\"4\n\x12GetPackageResponse\x12\x0e\n\x06output\x18\x02 \x01(\t\x12\x0e\n\x06\x65rrors\x18\x03 \x01(\t2I\n\x04Silo\x12\x41\n\nGetPackage\x12\x17.silo.GetPackageRequest\x1a\x18.silo.GetPackageResponse\"\x00\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)

@@ -1,17 +1,9 @@
-use actix_web::{web, HttpResponse};
-use base64::{engine::general_purpose, Engine as _};
-use chrono::Utc;
-use rusqlite::{params, Connection};
+use crate::db::{Container, ContainerStatus, Function, Output, Task};
+use actix_web::{web, HttpResponse, Scope};
+use clap::builder::Str;
+use rusqlite::Connection;
 use tera::Tera;
 use tokio::sync::Mutex;
-
-use crate::{
-    db::{
-        get_all_containers_db, get_all_tasks, get_python_input_db, get_python_output_db, Container,
-        ContainerStatus,
-    },
-    grpc::PythonInput,
-};
 
 pub struct AppState {
     pub templates: Tera,
@@ -23,37 +15,26 @@ pub async fn index(data: web::Data<AppState>) -> HttpResponse {
         .templates
         .render("base.html", &tera::Context::new())
         .unwrap();
-
     HttpResponse::Ok().body(rendered)
 }
 
 pub async fn dashboard(data: web::Data<AppState>) -> HttpResponse {
     let conn = data.db_connection.lock().await;
-
-    let inputs = get_all_tasks(&conn).unwrap();
-    let containers = get_all_containers_db(&conn).unwrap();
+    let tasks = Task::get_all(&conn).unwrap();
+    let containers = Container::get_all(&conn).unwrap();
 
     let mut context = tera::Context::new();
-    context.insert("inputs", &inputs);
+    context.insert("tasks", &tasks);
     context.insert("containers", &containers);
     let rendered = data.templates.render("dashboard.html", &context).unwrap();
     HttpResponse::Ok().body(rendered)
 }
 
-pub async fn put_input(data: web::Data<AppState>, input: web::Json<PythonInput>) -> HttpResponse {
-    // Implementation to add a new input
-    let conn = data.db_connection.lock().await;
+pub async fn add_task(data: web::Data<AppState>, task: web::Json<Task>) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
 
-    match conn.execute(
-        "INSERT INTO tasks (hostname, func, args, kwargs) VALUES (?1, ?2, ?3, ?4)",
-        params![
-            &input.hostname,
-            general_purpose::STANDARD.encode(&input.func),
-            general_purpose::STANDARD.encode(&input.args),
-            general_purpose::STANDARD.encode(&input.kwargs)
-        ],
-    ) {
-        Ok(_) => HttpResponse::Ok().finish(),
+    match task.insert(conn) {
+        Ok(task_id) => HttpResponse::Ok().body(task_id.to_string()),
         Err(e) => {
             eprintln!("Error: {}", e);
             HttpResponse::InternalServerError().finish()
@@ -61,44 +42,38 @@ pub async fn put_input(data: web::Data<AppState>, input: web::Json<PythonInput>)
     }
 }
 
-pub async fn get_input(data: web::Data<AppState>, hostname: String) -> HttpResponse {
-    let conn = data.db_connection.lock().await;
+pub async fn get_task(data: web::Data<AppState>, task_id: web::Path<i64>) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
+    match Task::get(conn, task_id.into_inner()) {
+        Ok(task) => HttpResponse::Ok().json(task.unwrap()),
+        Err(_) => HttpResponse::NotFound().finish(),
+    }
+}
 
-    match get_python_input_db(&conn, hostname) {
-        Ok(input) => HttpResponse::Ok().json(input),
+pub async fn add_function(
+    data: web::Data<AppState>,
+    function: web::Json<Function>,
+) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
+
+    match function.insert(conn) {
+        Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
-pub async fn put_output(
-    data: web::Data<AppState>,
-    output: web::Json<crate::grpc::PythonOutput>,
-) -> HttpResponse {
-    let conn = data.db_connection.lock().await;
-
-    match conn.execute(
-        "INSERT INTO results (hostname, output) VALUES (?1, ?2)",
-        params![
-            &output.hostname,
-            general_purpose::STANDARD.encode(&output.output)
-        ],
-    ) {
-        Ok(_) => HttpResponse::Ok().finish(),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            HttpResponse::InternalServerError().finish()
-        }
+pub async fn get_function(data: web::Data<AppState>, function_id: web::Path<i64>) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
+    match Function::get(conn, function_id.into_inner()) {
+        Ok(function) => HttpResponse::Ok().json(function.unwrap()),
+        Err(_) => HttpResponse::NotFound().finish(),
     }
 }
 
-pub async fn get_output(data: web::Data<AppState>, hostname: String) -> HttpResponse {
-    let conn = data.db_connection.lock().await;
-
-    match get_python_output_db(&conn, hostname) {
-        Ok(output) => match output {
-            Some(output) => HttpResponse::Ok().json(output),
-            None => HttpResponse::NotFound().finish(),
-        },
+pub async fn get_functions(data: web::Data<AppState>) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
+    match Function::get_all(conn) {
+        Ok(functions) => HttpResponse::Ok().json(functions),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
@@ -107,43 +82,78 @@ pub async fn add_container(
     data: web::Data<AppState>,
     container: web::Json<Container>,
 ) -> HttpResponse {
-    let conn = data.db_connection.lock().await;
+    let conn = &data.db_connection.lock().await;
 
-    match conn.execute(
-        "INSERT INTO containers (hostname, status, start_time, end_time) VALUES (?1, ?2, ?3, ?4)",
-        params![
-            container.hostname,
-            format!("{:?}", container.status),
-            container.start_time,
-            container.end_time
-        ], // Utc::now().timestamp()
-    ) {
+    match container.insert(conn) {
         Ok(_) => HttpResponse::Ok().finish(),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            HttpResponse::InternalServerError().finish()
-        }
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
-pub async fn update_container(
-    data: web::Data<AppState>,
-    container: web::Json<Container>,
-) -> HttpResponse {
-    let conn = data.db_connection.lock().await;
-
-    match conn.execute(
-        "UPDATE containers SET status = ?1, end_time = ?2 WHERE hostname = ?3",
-        params![
-            format!("{:?}", container.status),
-            container.end_time,
-            container.hostname
-        ],
-    ) {
+pub async fn updt_cntr(data: web::Data<AppState>, container: web::Json<Container>) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
+    match container.update_status_and_endtime(conn) {
         Ok(_) => HttpResponse::Ok().finish(),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            HttpResponse::InternalServerError().finish()
-        }
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
+}
+
+pub async fn get_container(data: web::Data<AppState>, hostname: web::Path<String>) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
+    match Container::get(conn, &hostname) {
+        Ok(container) => HttpResponse::Ok().json(container.unwrap()),
+        Err(_) => HttpResponse::NotFound().finish(),
+    }
+}
+
+// pub async fn get_random_task(data: web::Data<AppState>) -> HttpResponse {
+//     let conn = &data.db_connection.lock().await;
+//     match Task::get_random(conn) {
+//         Ok(Some(task)) => HttpResponse::Ok().json(task),
+//         Ok(None) => HttpResponse::NotFound().finish(),
+//         Err(_) => HttpResponse::InternalServerError().finish(),
+//     }
+// }
+
+pub async fn add_result(
+    data: web::Data<AppState>,
+    task_id: web::Path<i64>,
+    output: String,
+) -> HttpResponse {
+    let output = Output {
+        task_id: task_id.into_inner(),
+        output,
+    };
+
+    let conn = &data.db_connection.lock().await;
+
+    match output.insert(conn) {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
+
+pub async fn get_result(data: web::Data<AppState>, task_id: web::Path<i64>) -> HttpResponse {
+    let conn = &data.db_connection.lock().await;
+    match Output::get(conn, task_id.into_inner()) {
+        Ok(output) => HttpResponse::Ok().json(output.unwrap()),
+        Err(_) => HttpResponse::NotFound().finish(),
+    }
+}
+
+pub fn configure_routes() -> Scope {
+    web::scope("")
+        .route("/", web::get().to(index))
+        .route("/dashboard", web::get().to(dashboard))
+        .route("/api/functions", web::post().to(add_function))
+        .route("/api/functions/{function_id}", web::get().to(get_function))
+        .route("/api/functions", web::get().to(get_functions))
+        .route("/api/tasks", web::post().to(add_task))
+        .route("/api/tasks/{task_id}", web::get().to(get_task))
+        // .route("/api/tasks/random", web::get().to(get_random_task))
+        .route("/api/containers", web::put().to(add_container))
+        .route("/api/containers/{hostname}", web::patch().to(updt_cntr))
+        .route("/api/containers/{hostname}", web::get().to(get_container))
+        .route("/api/results/{task_id}", web::post().to(add_result))
+        .route("/api/results/{task_id}", web::get().to(get_result))
 }

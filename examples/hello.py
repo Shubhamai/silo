@@ -46,8 +46,10 @@ print(result)
 
 # Run by - silo launch hello.py
 
-#curl --proto '=https' --tlsv1.2 -LsSf https://github.com/shubhamai/silo/releases/download/v0.1.0/silo_installer.sh | sh
+# curl --proto '=https' --tlsv1.2 -LsSf https://github.com/shubhamai/silo/releases/download/v0.1.0/silo_installer.sh | sh
 
 # clear && cargo build --release && time sudo ./target/release/silo facility
 # Currently - python examples/silo/cli.py launch examples/hello.py
 # python examples/silo/cli.py build examples/hello.py
+# python -m grpc_tools.protoc -I../../common/protobufs --python_out=. --pyi_out=. --grpc_python_out=. ../../common/protobufs/silo.proto
+# python -m grpc_tools.protoc -I./common/protobufs/ --python_out=./examples/silo --grpc_python_out=./examples/silo silo.proto

@@ -1,18 +1,14 @@
+mod container;
 mod db;
 mod grpc;
 mod http;
-mod mount;
-mod namespace;
 
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{web, App, HttpServer};
 use clap::Command;
 use colored::*;
 use db::init_db;
-use grpc::{silo::silo_server::SiloServer, PythonInput, TheSilo};
-use http::{
-    add_container, dashboard, get_input, get_output, index, put_input, put_output,
-    update_container, AppState,
-};
+use grpc::{silo::silo_server::SiloServer, TheSilo};
+use http::{configure_routes, AppState};
 use tera::Tera;
 use tokio::sync::Mutex;
 use tonic::transport::Server;
@@ -68,14 +64,7 @@ async fn main() -> std::io::Result<()> {
             let http_server = HttpServer::new(move || {
                 App::new()
                     .app_data(app_state.clone())
-                    .route("/", web::get().to(index))
-                    .route("/dashboard", web::get().to(dashboard))
-                    .route("/api/inputs", web::put().to(put_input))
-                    .route("/api/inputs", web::get().to(get_input))
-                    .route("/api/outputs", web::put().to(put_output))
-                    .route("/api/outputs", web::get().to(get_output))
-                    .route("/api/containers", web::put().to(add_container))
-                    .route("/api/containers", web::patch().to(update_container))
+                    .service(configure_routes())
                     .service(actix_files::Files::new("/static", ".").show_files_listing())
             })
             .bind(&http_server_addr)?

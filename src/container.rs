@@ -1,10 +1,121 @@
-use std::path::{Path, PathBuf};
-
 use nix::{
-    mount::{mount, umount2, MntFlags, MsFlags},
+    mount::{mount, MsFlags},
+    sched::{clone, CloneFlags},
+    sys::signal::Signal,
+    unistd::{execvp, sethostname, Pid},
+};
+use nix::{
+    mount::{umount2, MntFlags},
     sys::stat,
     unistd::{chdir, mkdir, pivot_root},
 };
+use std::path::{Path, PathBuf};
+use std::{ffi::CString, fs::File, io::Write};
+
+const STACK_SIZE: usize = 1024 * 1024;
+
+fn child_func(
+    container_path: &str,
+    mount_path: &str,
+    container_name: &str,
+    task_id: i64,
+    host_link: &str,
+) -> isize {
+    sethostname(container_name).unwrap();
+
+    // Setup rootfs (implement this function based on your requirements)
+    setup_rootfs(container_path, mount_path, container_name);
+
+    let script = format!(
+        r#"
+import requests
+import cloudpickle
+import time
+import socket
+import base64
+
+start = time.perf_counter()
+
+url = "{host_link}/api/tasks/{task_id}"
+response = requests.get(url)
+
+if response.status_code == 200:
+    task = response.json()
+    
+    func = cloudpickle.loads(base64.b64decode(task["func"]))
+    args = cloudpickle.loads(base64.b64decode(task["args"]))
+    kwargs = cloudpickle.loads(base64.b64decode(task["kwargs"]))
+    output = func(*args, **kwargs)
+
+    result = cloudpickle.dumps(output)
+
+    requests.post("{host_link}/api/results/{task_id}", data=base64.b64encode(result))
+
+    end = time.perf_counter() - start
+    print(f"Python time taken: {{end * 1000:.2f}}ms")
+else:
+    print("Failed with status code:", response.status_code)
+"#,
+        host_link = host_link,
+        task_id = task_id
+    );
+
+    std::env::set_var("PATH", "/usr/local/bin:/usr/bin:/bin");
+
+    let script_path = "/tmp/exec_func.py";
+    let mut script_file = File::create(script_path).unwrap();
+    script_file.write_all(script.as_bytes()).unwrap();
+
+    let python = CString::new("/opt/bitnami/python/bin/python").unwrap();
+    let script_cstr = CString::new(script_path).unwrap();
+    execvp(&python, &[python.clone(), script_cstr]).unwrap();
+
+    0
+}
+
+pub fn create_container(
+    container_path: &str,
+    container_name: &str,
+    task_id: i64,
+    host_link: &str,
+) -> Result<Pid, nix::Error> {
+    let mount_path = format!("/tmp/{}", container_name);
+    std::fs::create_dir_all(&mount_path).unwrap();
+
+    mount(
+        None::<&str>,
+        "/",
+        None::<&str>,
+        MsFlags::MS_REC | MsFlags::MS_PRIVATE,
+        None::<&str>,
+    )
+    .unwrap();
+
+    let mut stack = [0; STACK_SIZE];
+
+    let clone_flags = CloneFlags::CLONE_NEWNS
+        | CloneFlags::CLONE_NEWCGROUP
+        | CloneFlags::CLONE_NEWPID
+        | CloneFlags::CLONE_NEWIPC
+        | CloneFlags::CLONE_NEWUTS;
+
+    unsafe {
+        clone(
+            Box::new(move || {
+                child_func(
+                    container_path,
+                    &mount_path,
+                    container_name,
+                    task_id,
+                    host_link,
+                )
+            }),
+            &mut stack,
+            clone_flags,
+            Some(Signal::SIGCHLD as i32),
+        )
+    }
+}
 
 // From https://github.com/managarm/cbuildrt/blob/main/src/main.rs#L57
 fn concat_absolute<L: AsRef<Path>, R: AsRef<Path>>(lhs: L, rhs: R) -> PathBuf {
@@ -28,7 +139,6 @@ pub fn setup_rootfs(container_path: &str, mount_path: &str, container_name: &str
     // From https://github.com/managarm/cbuildrt/blob/main/src/main.rs#L57
     let dev_overlays = vec!["tty", "null", "zero", "full", "random", "urandom"];
     for f in dev_overlays {
-
         // if mount fails, print error message, but continue
         nix::mount::mount(
             Some(&Path::new("/dev/").join(f)),
@@ -37,10 +147,7 @@ pub fn setup_rootfs(container_path: &str, mount_path: &str, container_name: &str
             nix::mount::MsFlags::MS_BIND,
             None::<&str>,
         )
-        .unwrap_or_else(
-            |e| println!("Failed to mount /dev/{}: {}", f, e)
-        )
-        
+        .unwrap_or_else(|e| println!("Failed to mount /dev/{}: {}", f, e))
     }
 
     nix::mount::mount(
