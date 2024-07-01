@@ -2,22 +2,22 @@ import time
 import silo
 
 # [::1]:50051 is the default address of the Silo server
-server = silo.Server("146.190.78.181:50051", api_key="your_api_key_here")
-# server = silo.Server("0.0.0.0:50051", api_key="your_api_key_here")
+# server = silo.Server("146.190.78.181:50051", api_key="your_api_key_here")
+server = silo.Server("0.0.0.0:50051", api_key="your_api_key_here")
 
 
 @server.function()
 def hello(name):
 
-    # print(f"Hello, {name}!")
+    print(f"Hello, {name}!")
     # time.sleep(20)
     # print(f"Bye, {name}!")
 
     return f"Hello, {name}!"
 
 
-# result = hello.remote(name="Remote")
-result = hello.map(f"Remote {i}" for i in range(10))
+result = hello.remote(name="Remote")
+# result = hello.map(f"Remote {i}" for i in range(10))
 
 print(result)
 
@@ -45,6 +45,8 @@ print(result)
 
 
 # Run by - silo launch hello.py
+
+#curl --proto '=https' --tlsv1.2 -LsSf https://github.com/shubhamai/silo/releases/download/v0.1.0/silo_installer.sh | sh
 
 # clear && cargo build --release && time sudo ./target/release/silo facility
 # Currently - python examples/silo/cli.py launch examples/hello.py

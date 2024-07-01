@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Container Dashboard</h1>
+<table>
+    <tr>
+        <th>hostname</th>
+        <th>func</th>
+        <th>args</th>
+        <th>kwargs</th>
+    </tr>
+    {% for input in inputs %}
+    <tr>
+        <td>{{ input.hostname }}</td>
+        <td>{{ input.func }}</td>
+        <td>{{ input.args }}</td>
+        <td>{{ input.kwargs }}</td>
+    </tr>
+    {% endfor %}
+
+    <br>
+    
+    <tr>
+        <th>hostname</th>
+        <th>status</th>
+        <th>start_time</th>
+        <th>end_time</th>
+    </tr>
+    {% for container in containers %}
+    <tr>
+        <td>{{ container.hostname }}</td>
+        <td>{{ container.status }}</td>
+        <td>{{ container.start_time }}</td>
+        <td>{{ container.end_time }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

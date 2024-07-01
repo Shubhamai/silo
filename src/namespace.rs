@@ -29,8 +29,8 @@ import socket
 
 start = time.perf_counter()
 
-url = "{host_link}/data"
-response = requests.get(url, headers={{"hostname": socket.gethostname()}})
+url = "{host_link}/api/inputs"
+response = requests.get(url, data=socket.gethostname())
 
 if response.status_code == 200:
     res = response.json()
@@ -48,9 +48,9 @@ if response.status_code == 200:
 
     result = cloudpickle.dumps(output)
 
-    data = {{'output': list(result)}}
+    data = {{'output': list(result), 'hostname': socket.gethostname()}}
 
-    response = requests.put("{host_link}/output", json=data, headers={{"hostname": socket.gethostname()}})    
+    response = requests.put("{host_link}/api/outputs", json=data)    
     end = time.perf_counter() - start
     print(f"Python time taken: {{end * 1000:.2f}}ms")
 

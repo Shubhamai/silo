@@ -1,21 +1,24 @@
+mod db;
 mod grpc;
 mod http;
 mod mount;
 mod namespace;
 
+use actix_web::{web, App, HttpResponse, HttpServer};
 use clap::Command;
 use colored::*;
-use dashmap::DashMap;
-use grpc::{silo::silo_server::SiloServer, TheSilo};
-
-use http::HttpServer;
-use hyper::{server::conn::http1, service::service_fn};
-use hyper_util::rt::TokioIo;
-use tokio::net::TcpListener;
+use db::init_db;
+use grpc::{silo::silo_server::SiloServer, PythonInput, TheSilo};
+use http::{
+    add_container, dashboard, get_input, get_output, index, put_input, put_output,
+    update_container, AppState,
+};
+use tera::Tera;
+use tokio::sync::Mutex;
 use tonic::transport::Server;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::io::Result<()> {
     let matches = Command::new("silo")
         .bin_name("silo")
         .version(env!("CARGO_PKG_VERSION"))
@@ -46,69 +49,64 @@ async fn main() {
             let grpc_port: String = sub_matches.get_one::<String>("gp").unwrap().clone();
             let http_port: String = sub_matches.get_one::<String>("hp").unwrap().clone();
 
-            let grpc_server_addr: &String = &format!("0.0.0.0:{}", grpc_port); // [::1]
+            let grpc_server_addr: String = format!("0.0.0.0:{}", grpc_port);
             let http_server_addr = format!("0.0.0.0:{}", &http_port);
-            // const CONTAINER_PATH: &str = "/home/elden/Downloads/python";
-            let container_path: &str = sub_matches.get_one::<String>("container-path").unwrap();
+            let container_path: String = sub_matches
+                .get_one::<String>("container-path")
+                .unwrap()
+                .clone();
 
-            let thread_http_server_address = http_server_addr.clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
+            let tera = Tera::new("templates/**/*").unwrap();
 
-                rt.block_on(async {
-                    let serv = std::sync::Arc::new(HttpServer {
-                        address: thread_http_server_address.to_string(),
-                        python_input_data: DashMap::new(),
-                        python_result_data: DashMap::new(),
-                    });
+            let conn = init_db().unwrap();
 
-                    let listener = TcpListener::bind(serv.address.clone()).await.unwrap();
-                    println!(
-                        "{}",
-                        format!("HTTP server listening on {}...", serv.address).blue()
-                    );
-
-                    loop {
-                        let (stream, _) = listener.accept().await.unwrap();
-                        let io = TokioIo::new(stream);
-
-                        let serv = serv.clone();
-                        let make_service = service_fn(move |r| {
-                            let serv = serv.clone();
-
-                            async move { serv.handle(r).await }
-                        });
-
-                        tokio::task::spawn(async move {
-                            if let Err(err) = http1::Builder::new()
-                                .serve_connection(io, make_service)
-                                .await
-                            {
-                                println!(
-                                    "{}",
-                                    format!("Error serving connection: {:?}", err).red()
-                                );
-                            }
-                        });
-                    }
-                })
+            let app_state = web::Data::new(AppState {
+                templates: tera,
+                db_connection: Mutex::new(conn),
             });
+
+            let http_server = HttpServer::new(move || {
+                App::new()
+                    .app_data(app_state.clone())
+                    .route("/", web::get().to(index))
+                    .route("/dashboard", web::get().to(dashboard))
+                    .route("/api/inputs", web::put().to(put_input))
+                    .route("/api/inputs", web::get().to(get_input))
+                    .route("/api/outputs", web::put().to(put_output))
+                    .route("/api/outputs", web::get().to(get_output))
+                    .route("/api/containers", web::put().to(add_container))
+                    .route("/api/containers", web::patch().to(update_container))
+                    .service(actix_files::Files::new("/static", ".").show_files_listing())
+            })
+            .bind(&http_server_addr)?
+            .run();
 
             println!(
                 "{}",
-                format!("gRPC server listening on {}...", grpc_server_addr).blue()
+                format!("HTTP server listening on {} ...", http_server_addr).blue()
             );
-            Server::builder()
+
+            let grpc_server = Server::builder()
                 .add_service(SiloServer::new(TheSilo {
-                    container_path: container_path.to_string(),
+                    container_path,
                     host_link: format!("http://{}", http_server_addr),
                 }))
-                .serve(grpc_server_addr.parse().unwrap())
-                .await
-                .unwrap();
+                .serve(grpc_server_addr.parse().unwrap());
+
+            println!(
+                "{}",
+                format!("gRPC server listening on {} ...", grpc_server_addr).blue()
+            );
+
+            tokio::select! {
+                _ = http_server => println!("HTTP server exited"),
+                _ = grpc_server => println!("gRPC server exited"),
+            }
         }
         _ => {
             println!("{}", "No valid subcommand was used".red());
         }
     }
+
+    Ok(())
 }

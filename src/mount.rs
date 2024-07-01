@@ -26,7 +26,7 @@ pub fn setup_rootfs(container_path: &str, mount_path: &str, container_name: &str
     }
 
     // From https://github.com/managarm/cbuildrt/blob/main/src/main.rs#L57
-    let dev_overlays = vec!["tty", "null", "zero", "full", "random", "urandomsds"];
+    let dev_overlays = vec!["tty", "null", "zero", "full", "random", "urandom"];
     for f in dev_overlays {
 
         // if mount fails, print error message, but continue
