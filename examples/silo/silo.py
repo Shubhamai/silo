@@ -4,6 +4,7 @@ import pickle
 from silo_pb2 import GetPackageRequest
 from silo_pb2_grpc import SiloStub
 import grpc
+import inspect
 
 import concurrent.futures
 
@@ -56,22 +57,13 @@ class RemoteFunction:
     def remote(self, *args, **kwargs):
 
         request = GetPackageRequest()
+
+        request.func_str = inspect.getsource(self.func)
         request.func = base64.b64encode(cloudpickle.dumps(self.func)).decode("utf-8")
-
-        # Serialize and add arguments to the request
-        # for arg in args:
-        #     request.args.append(cloudpickle.dumps(arg))
         request.args = base64.b64encode(cloudpickle.dumps(args)).decode("utf-8")
-
         request.kwargs = base64.b64encode(cloudpickle.dumps(kwargs)).decode("utf-8")
 
-        # Serialize and add keyword arguments to the request
-        # for key, value in kwargs.items():
-        #     request.kwargs[key] = cloudpickle.dumps(value)
-
         response = self._make_request("execute", request)
-
-        # print(response.errors)
 
         return pickle.loads(base64.b64decode(response.output))
 

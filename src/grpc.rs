@@ -42,6 +42,7 @@ impl Silo for TheSilo {
                 id: None,
                 name: request_data.func.clone(),
                 function: request_data.func.clone(),
+                function_str: request_data.func_str.clone(),
             })
             .send()
             .await
@@ -158,7 +159,7 @@ impl Silo for TheSilo {
             ))
             .json(&Container {
                 hostname: container_name.clone(),
-                status: ContainerStatus::Stopped,
+                status: ContainerStatus::Completed,
                 start_time: Utc::now().timestamp_millis(),
                 end_time: Utc::now().timestamp_millis(),
             })

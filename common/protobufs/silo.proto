@@ -7,9 +7,11 @@ service Silo {
 
 message GetPackageRequest {
     int32 id = 1;
-    string func = 2;
-    string args = 3;
-    string kwargs = 4;
+    string func_str = 2;
+    // string func_name = 3;
+    string func = 3;
+    string args = 4;
+    string kwargs = 5;
 }
 
 message GetPackageResponse {

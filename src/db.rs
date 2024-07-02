@@ -9,6 +9,7 @@ pub struct Function {
     pub id: Option<i64>,
     pub name: String,
     pub function: String,
+    pub function_str: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,11 +20,11 @@ pub struct Task {
     pub kwargs: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum ContainerStatus {
     Starting,
     Running,
-    Stopped,
+    Completed,
     Failed,
 }
 
@@ -34,7 +35,7 @@ impl FromStr for ContainerStatus {
         match s {
             "Starting" => Ok(ContainerStatus::Starting),
             "Running" => Ok(ContainerStatus::Running),
-            "Stopped" => Ok(ContainerStatus::Stopped),
+            "Completed" => Ok(ContainerStatus::Completed),
             "Failed" => Ok(ContainerStatus::Failed),
             _ => Err(()),
         }
@@ -46,7 +47,7 @@ impl ToString for ContainerStatus {
         match self {
             ContainerStatus::Starting => "Starting".to_string(),
             ContainerStatus::Running => "Running".to_string(),
-            ContainerStatus::Stopped => "Stopped".to_string(),
+            ContainerStatus::Completed => "Completed".to_string(),
             ContainerStatus::Failed => "Failed".to_string(),
         }
     }
@@ -75,7 +76,8 @@ pub fn init_db() -> Result<Connection> {
         "CREATE TABLE IF NOT EXISTS functions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            function TEXT NOT NULL
+            function TEXT NOT NULL,
+            function_str TEXT NOT NULL
         )",
         [],
     )?;
@@ -115,21 +117,22 @@ pub fn init_db() -> Result<Connection> {
 impl Function {
     pub fn insert(&self, conn: &Connection) -> Result<i64> {
         conn.execute(
-            "INSERT INTO functions (name, function) VALUES (?1, ?2)",
-            params![self.name, self.function],
+            "INSERT INTO functions (name, function, function_str) VALUES (?1, ?2, ?3)",
+            params![self.name, self.function, self.function_str],
         )?;
         Ok(conn.last_insert_rowid())
     }
 
     pub fn get(conn: &Connection, id: i64) -> Result<Option<Function>> {
         conn.query_row(
-            "SELECT id, name, function FROM functions WHERE id = ?1",
+            "SELECT id, name, function, function_str FROM functions WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Function {
                     id: Some(row.get(0)?),
                     name: row.get(1)?,
                     function: row.get(2)?,
+                    function_str: row.get(3)?,
                 })
             },
         )
@@ -137,12 +140,13 @@ impl Function {
     }
 
     pub fn get_all(conn: &Connection) -> Result<Vec<Function>> {
-        let mut stmt = conn.prepare("SELECT id, name, function FROM functions")?;
+        let mut stmt = conn.prepare("SELECT id, name, function, function_str FROM functions")?;
         let rows = stmt.query_map([], |row| {
             Ok(Function {
                 id: Some(row.get(0)?),
                 name: row.get(1)?,
                 function: row.get(2)?,
+                function_str: row.get(3)?,
             })
         })?;
 
@@ -156,8 +160,8 @@ impl Function {
 
     pub fn update(&self, conn: &Connection) -> Result<()> {
         conn.execute(
-            "UPDATE functions SET name = ?1, function = ?2 WHERE id = ?3",
-            params![self.name, self.function, self.id],
+            "UPDATE functions SET name = ?1, function = ?2 function_str = ?3 WHERE id = ?4",
+            params![self.name, self.function, self.function_str, self.id],
         )?;
         Ok(())
     }

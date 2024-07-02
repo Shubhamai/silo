@@ -10,8 +10,8 @@ server = silo.Server("0.0.0.0:50051", api_key="your_api_key_here")
 def hello(name):
 
     print(f"Hello, {name}!")
-    # time.sleep(20)
-    # print(f"Bye, {name}!")
+    time.sleep(10)
+    print(f"Bye, {name}!")
 
     return f"Hello, {name}!"
 
