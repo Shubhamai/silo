@@ -1,118 +1,192 @@
-use bytes::Bytes;
-use dashmap::DashMap;
-use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
-use hyper::{header, Method, Request, Response, StatusCode};
-use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::grpc::{PythonInput, PythonOutput};
+use crate::db::{Container, ContainerStatus, Function, Output, Task};
+use actix_web::{web, HttpResponse, Scope};
+use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
+use tera::Tera;
+use thiserror::Error;
+use tokio::sync::Mutex;
 
-pub struct HttpServer {
-    pub address: String,
-    pub python_input_data: DashMap<std::string::String, PythonInput>,
-    pub python_result_data: DashMap<std::string::String, PythonOutput>,
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] rusqlite::Error),
+
+    #[error("Template rendering error: {0}")]
+    TemplateError(#[from] tera::Error),
+
+    #[error("Not found")]
+    NotFound,
+
+    #[error("Internal server error")]
+    InternalServerError,
 }
 
-impl HttpServer {
-    pub async fn handle(
-        &self,
-        req: Request<hyper::body::Incoming>,
-    ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-        // get hostname header
-        let headers = req.headers().clone();
-        let hostname = headers.get("hostname").unwrap().to_str().unwrap();
-
-        match (req.method(), req.uri().path()) {
-            (&Method::PUT, "/data") => {
-                let whole_body = req.collect().await?.to_bytes();
-
-                match bincode::decode_from_slice::<PythonInput, _>(
-                    &whole_body,
-                    bincode::config::standard(),
-                ) {
-                    Ok(data) => {
-                        let data = data.0;
-
-                        // let mut unck = grpc_request_data.lock().unwrap();
-                        self.python_input_data.insert(
-                            hostname.to_string(),
-                            PythonInput {
-                                func: data.func,
-                                args: data.args,
-                                kwargs: data.kwargs,
-                            },
-                        );
-
-                        Ok::<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error>(Response::new(
-                            empty(),
-                        ))
-                    }
-                    Err(_) => Ok(Response::builder()
-                        .status(StatusCode::BAD_REQUEST)
-                        .body(empty())
-                        .unwrap()),
-                }
-            }
-
-            (&Method::GET, "/data") => {
-                // let mut unck = grpc_request_data.lock().unwrap();
-                let data = self.python_input_data.remove(hostname).unwrap().1;
-
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .body(full(
-                        serde_json::to_string(&HashMap::from([
-                            ("func".to_string(), data.func.clone()),
-                            ("args".to_string(), data.args.clone()),
-                            ("kwargs".to_string(), data.kwargs.clone()),
-                        ]))
-                        .unwrap(),
-                    ))
-                    .unwrap())
-            }
-
-            (&Method::PUT, "/output") => {
-                let whole_body = req.collect().await?.to_bytes();
-
-                self.python_result_data.insert(
-                    hostname.to_string(),
-                    serde_json::from_slice(&whole_body).unwrap(),
-                );
-
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .body(empty())
-                    .unwrap())
-            }
-            (&Method::GET, "/output") => {
-                let data = self.python_result_data.remove(hostname).unwrap().1.output;
-
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .body(full(
-                        serde_json::to_string(&HashMap::from([("output".to_string(), data)]))
-                            .unwrap(),
-                    ))
-                    .unwrap())
-            }
-
-            _ => Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(empty())
-                .unwrap()),
+impl actix_web::ResponseError for AppError {
+    fn error_response(&self) -> HttpResponse {
+        match self {
+            AppError::NotFound => HttpResponse::NotFound().finish(),
+            _ => HttpResponse::InternalServerError().finish(),
         }
     }
 }
 
-fn full<T: Into<Bytes>>(chunk: T) -> http_body_util::combinators::BoxBody<Bytes, hyper::Error> {
-    Full::new(chunk.into())
-        .map_err(|never| match never {})
-        .boxed()
+pub struct AppState {
+    pub templates: Tera,
+    pub db_connection: Mutex<Connection>,
 }
 
-fn empty() -> BoxBody<Bytes, hyper::Error> {
-    Empty::<Bytes>::new()
-        .map_err(|never| match never {})
-        .boxed()
+pub async fn index(data: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+    let rendered = data.templates.render("base.html", &tera::Context::new())?;
+    Ok(HttpResponse::Ok().body(rendered))
+}
+
+#[derive(Serialize, Deserialize)]
+struct ContainerWithUptime {
+    hostname: String,
+    status: ContainerStatus,
+    uptime: i64,
+}
+
+pub async fn dashboard(data: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+    let conn = data.db_connection.lock().await;
+    let tasks = Task::get_all(&conn)?;
+    let containers = Container::get_all(&conn)?;
+
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let containers_with_uptime: Vec<ContainerWithUptime> = containers
+        .into_iter()
+        .map(|container| {
+            let uptime = if container.status == ContainerStatus::Running {
+                current_time - container.start_time
+            } else {
+                container.end_time - container.start_time
+            };
+            ContainerWithUptime {
+                hostname: container.hostname,
+                status: container.status,
+                uptime,
+            }
+        })
+        .collect();
+
+    let mut context = tera::Context::new();
+    context.insert("tasks", &tasks);
+    context.insert("containers", &containers_with_uptime);
+    let rendered = data.templates.render("dashboard.html", &context)?;
+    Ok(HttpResponse::Ok().body(rendered))
+}
+pub async fn add_task(
+    data: web::Data<AppState>,
+    task: web::Json<Task>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    let task_id = task.insert(conn)?;
+    Ok(HttpResponse::Ok().body(task_id.to_string()))
+}
+
+pub async fn get_task(
+    data: web::Data<AppState>,
+    task_id: web::Path<i64>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    let task = Task::get(conn, task_id.into_inner())?.ok_or(AppError::NotFound)?;
+    Ok(HttpResponse::Ok().json(task))
+}
+
+pub async fn add_function(
+    data: web::Data<AppState>,
+    function: web::Json<Function>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    function.insert(conn)?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn get_function(
+    data: web::Data<AppState>,
+    function_id: web::Path<i64>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    let function = Function::get(conn, function_id.into_inner())?.ok_or(AppError::NotFound)?;
+    Ok(HttpResponse::Ok().json(function))
+}
+
+pub async fn get_functions(data: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    let functions = Function::get_all(conn)?;
+    Ok(HttpResponse::Ok().json(functions))
+}
+
+pub async fn add_container(
+    data: web::Data<AppState>,
+    container: web::Json<Container>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    container.insert(conn)?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn update_container(
+    data: web::Data<AppState>,
+    container: web::Json<Container>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    container.update_status_and_endtime(conn)?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn get_container(
+    data: web::Data<AppState>,
+    hostname: web::Path<String>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    let container = Container::get(conn, &hostname)?.ok_or(AppError::NotFound)?;
+    Ok(HttpResponse::Ok().json(container))
+}
+
+pub async fn add_result(
+    data: web::Data<AppState>,
+    task_id: web::Path<i64>,
+    output: String,
+) -> Result<HttpResponse, AppError> {
+    let output = Output {
+        task_id: task_id.into_inner(),
+        output,
+    };
+    let conn = &data.db_connection.lock().await;
+    output.insert(conn)?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn get_result(
+    data: web::Data<AppState>,
+    task_id: web::Path<i64>,
+) -> Result<HttpResponse, AppError> {
+    let conn = &data.db_connection.lock().await;
+    let output = Output::get(conn, task_id.into_inner())?.ok_or(AppError::NotFound)?;
+    Ok(HttpResponse::Ok().json(output))
+}
+
+pub fn configure_routes() -> Scope {
+    web::scope("")
+        .route("/", web::get().to(index))
+        .route("/dashboard", web::get().to(dashboard))
+        .route("/api/functions", web::post().to(add_function))
+        .route("/api/functions/{function_id}", web::get().to(get_function))
+        .route("/api/functions", web::get().to(get_functions))
+        .route("/api/tasks", web::post().to(add_task))
+        .route("/api/tasks/{task_id}", web::get().to(get_task))
+        .route("/api/containers", web::put().to(add_container))
+        .route(
+            "/api/containers/{hostname}",
+            web::patch().to(update_container),
+        )
+        .route("/api/containers/{hostname}", web::get().to(get_container))
+        .route("/api/results/{task_id}", web::post().to(add_result))
+        .route("/api/results/{task_id}", web::get().to(get_result))
 }

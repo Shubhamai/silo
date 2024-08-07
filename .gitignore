@@ -1,0 +1,7 @@
+target/
+.venv/
+content/
+indexer.db
+silo/__pycache__/
+examples/__pycache__/
+silo.db

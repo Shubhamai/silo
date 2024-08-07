@@ -1,33 +1,21 @@
+use crate::container::{create_container, run_podman_container};
+use crate::db::{Container, ContainerStatus, Function, Output, Task};
+use crate::filesystem::SiloFS;
 use bincode::{Decode, Encode};
+use chrono::Utc;
+use colored::*;
 use nix::sys::wait::waitpid;
-use serde::{Deserialize, Serialize};
-use tonic::{Request, Response, Status};
-
 use silo::silo_server::Silo;
 use silo::{GetPackageRequest, GetPackageResponse};
+use tonic::{Request, Response, Status};
 
-use colored::*;
-
-use crate::namespace;
 pub mod silo {
     tonic::include_proto!("silo");
 }
 
-#[derive(Encode, Decode, PartialEq, Debug, Clone, Deserialize, Serialize)]
-pub struct PythonInput {
-    pub func: Vec<u8>,
-    pub args: Vec<u8>,
-    pub kwargs: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PythonOutput {
-    pub output: Vec<u8>,
-}
-
 #[derive(Debug)]
 pub struct TheSilo {
-    pub container_path: String,
+    // pub container_path: String,
     pub host_link: String,
 }
 
@@ -42,86 +30,167 @@ impl Silo for TheSilo {
 
         let container_name = format!("container-{}", rand::random::<u32>());
         let mount_path = &format!("/tmp/{}", container_name);
+
         std::fs::create_dir_all(mount_path).unwrap();
+
+        let thread_mount_path = mount_path.clone();
+        std::thread::spawn(move || {
+            let _ = SiloFS::run("127.0.0.1:8080", &thread_mount_path, "python:3.10");
+        });
+
+        let start_time = std::time::Instant::now();
 
         let request_data = request.into_inner();
 
-        // send the data to the HTTP server
+        // save function to the database
         reqwest::Client::new()
-            .put(format!("{}/data", self.host_link))
-            .body(
-                bincode::encode_to_vec(
-                    PythonInput {
-                        func: request_data.func.clone(),
-                        args: request_data.args.clone(),
-                        kwargs: request_data.kwargs.clone(),
-                    },
-                    bincode::config::standard(),
-                )
-                .unwrap(),
-            )
-            .header("hostname", container_name.clone())
+            .post(format!("{}/api/functions", self.host_link))
+            .json(&Function {
+                id: None,
+                name: request_data.func.clone(),
+                function: request_data.func.clone(),
+                function_str: request_data.func_str.clone(),
+            })
             .send()
             .await
             .unwrap();
 
+        // send the data to the HTTP server
+        let task_id = reqwest::Client::new()
+            .post(format!("{}/api/tasks", self.host_link))
+            .json(&Task {
+                id: None,
+                func: request_data.func,
+                args: request_data.args,
+                kwargs: request_data.kwargs,
+            })
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+            .parse::<i64>()
+            .unwrap();
+
         // check if the container path exists
-        if !std::path::Path::new(&self.container_path).exists() {
-            panic!("Container does not exist");
-        }
+        // if !std::path::Path::new(&self.container_path).exists() {
+        //     panic!("Container does not exist");
+        // }
 
         println!(
             "{}",
             format!("Running {}...", container_name).bright_yellow()
         );
 
-        let child_pid = namespace::create_child(
-            &self.container_path.clone(),
-            mount_path,
-            container_name.clone(),
-            self.host_link.clone(),
-        );
+        // let child_pid = create_container(
+        //     &self.container_path,
+        //     &container_name,
+        //     task_id,
+        //     &self.host_link,
+        // );
 
-        match child_pid {
-            Ok(pid) => {
-                println!(
-                    "{}",
-                    format!("Container {} is running with PID {}", container_name, pid).green()
-                );
+        let _ = run_podman_container(&container_name, task_id, &self.host_link, mount_path);
 
-                waitpid(pid, None).unwrap();
-            }
-            Err(e) => {
-                println!(
-                    "{}",
-                    format!("Failed to run container {}: {}", container_name, e).red()
-                );
-            }
-        }
+        // reqwest::Client::new()
+        //     .put(format!("{}/api/containers", self.host_link))
+        //     .json(&Container {
+        //         hostname: container_name.clone(),
+        //         status: ContainerStatus::Starting,
+        //         start_time: Utc::now().timestamp_millis(),
+        //         end_time: Utc::now().timestamp_millis(),
+        //     })
+        //     .send()
+        //     .await
+        //     .unwrap();
+
+        // match child_pid {
+        //     Ok(pid) => {
+        //         println!(
+        //             "{}",
+        //             format!("Container {} is running with PID {}", container_name, pid).green()
+        //         );
+
+        //         reqwest::Client::new()
+        //             .patch(format!(
+        //                 "{}/api/containers/{}",
+        //                 self.host_link, container_name
+        //             ))
+        //             .json(&Container {
+        //                 hostname: container_name.clone(),
+        //                 status: ContainerStatus::Running,
+        //                 start_time: Utc::now().timestamp_millis(),
+        //                 end_time: Utc::now().timestamp_millis(),
+        //             })
+        //             .send()
+        //             .await
+        //             .unwrap();
+
+        //         waitpid(pid, None).unwrap();
+        //     }
+        //     Err(e) => {
+        //         reqwest::Client::new()
+        //             .patch(format!(
+        //                 "{}/api/containers/{}",
+        //                 self.host_link, container_name
+        //             ))
+        //             .json(&Container {
+        //                 hostname: container_name.clone(),
+        //                 status: ContainerStatus::Failed,
+        //                 start_time: Utc::now().timestamp_millis(),
+        //                 end_time: Utc::now().timestamp_millis(),
+        //             })
+        //             .send()
+        //             .await
+        //             .unwrap();
+
+        //         println!(
+        //             "{}",
+        //             format!("Failed to run container {}: {}", container_name, e).red()
+        //         );
+        //     }
+        // }
 
         println!(
             "{}",
-            format!("Container {} has exited", container_name).bright_red()
+            format!(
+                "Container {} has exited in {:?}ms",
+                container_name,
+                start_time.elapsed().as_millis()
+            )
+            .bright_yellow()
         );
 
-        let data: PythonOutput = serde_json::from_slice(
-            &reqwest::Client::new()
-                .get(format!("{}/output", self.host_link))
-                .header("hostname", container_name)
-                .send()
-                .await
-                .unwrap()
-                .bytes()
-                .await
-                .unwrap(),
-        )
-        .unwrap();
+        reqwest::Client::new()
+            .patch(format!(
+                "{}/api/containers/{}",
+                self.host_link, container_name
+            ))
+            .json(&Container {
+                hostname: container_name.clone(),
+                status: ContainerStatus::Completed,
+                start_time: Utc::now().timestamp_millis(),
+                end_time: Utc::now().timestamp_millis(),
+            })
+            .send()
+            .await
+            .unwrap();
+
+        let output = reqwest::Client::new()
+            .get(format!("{}/api/results/{}", self.host_link, task_id))
+            .body(container_name)
+            .send()
+            .await
+            .unwrap()
+            .json::<Output>()
+            .await
+            .unwrap();
 
         // delete the container
         std::fs::remove_dir_all(mount_path).unwrap();
 
         let reply = silo::GetPackageResponse {
-            output: data.output,
+            output: output.output,
             errors: "errors".to_string(),
         };
         Ok(Response::new(reply))
