@@ -1,10 +1,8 @@
-use crate::container::{create_container, run_podman_container};
+use crate::container::run_podman_container;
 use crate::db::{Container, ContainerStatus, Function, Output, Task};
 use crate::filesystem::SiloFS;
-use bincode::{Decode, Encode};
 use chrono::Utc;
 use colored::*;
-use nix::sys::wait::waitpid;
 use silo::silo_server::Silo;
 use silo::{GetPackageRequest, GetPackageResponse};
 use tonic::{Request, Response, Status};
@@ -37,6 +35,7 @@ impl Silo for TheSilo {
         std::thread::spawn(move || {
             let _ = SiloFS::run("127.0.0.1:8080", &thread_mount_path, "python:3.10");
         });
+        std::thread::sleep(std::time::Duration::from_secs(1));
 
         let start_time = std::time::Instant::now();
 
@@ -73,83 +72,12 @@ impl Silo for TheSilo {
             .parse::<i64>()
             .unwrap();
 
-        // check if the container path exists
-        // if !std::path::Path::new(&self.container_path).exists() {
-        //     panic!("Container does not exist");
-        // }
-
         println!(
             "{}",
             format!("Running {}...", container_name).bright_yellow()
         );
 
-        // let child_pid = create_container(
-        //     &self.container_path,
-        //     &container_name,
-        //     task_id,
-        //     &self.host_link,
-        // );
-
         let _ = run_podman_container(&container_name, task_id, &self.host_link, mount_path);
-
-        // reqwest::Client::new()
-        //     .put(format!("{}/api/containers", self.host_link))
-        //     .json(&Container {
-        //         hostname: container_name.clone(),
-        //         status: ContainerStatus::Starting,
-        //         start_time: Utc::now().timestamp_millis(),
-        //         end_time: Utc::now().timestamp_millis(),
-        //     })
-        //     .send()
-        //     .await
-        //     .unwrap();
-
-        // match child_pid {
-        //     Ok(pid) => {
-        //         println!(
-        //             "{}",
-        //             format!("Container {} is running with PID {}", container_name, pid).green()
-        //         );
-
-        //         reqwest::Client::new()
-        //             .patch(format!(
-        //                 "{}/api/containers/{}",
-        //                 self.host_link, container_name
-        //             ))
-        //             .json(&Container {
-        //                 hostname: container_name.clone(),
-        //                 status: ContainerStatus::Running,
-        //                 start_time: Utc::now().timestamp_millis(),
-        //                 end_time: Utc::now().timestamp_millis(),
-        //             })
-        //             .send()
-        //             .await
-        //             .unwrap();
-
-        //         waitpid(pid, None).unwrap();
-        //     }
-        //     Err(e) => {
-        //         reqwest::Client::new()
-        //             .patch(format!(
-        //                 "{}/api/containers/{}",
-        //                 self.host_link, container_name
-        //             ))
-        //             .json(&Container {
-        //                 hostname: container_name.clone(),
-        //                 status: ContainerStatus::Failed,
-        //                 start_time: Utc::now().timestamp_millis(),
-        //                 end_time: Utc::now().timestamp_millis(),
-        //             })
-        //             .send()
-        //             .await
-        //             .unwrap();
-
-        //         println!(
-        //             "{}",
-        //             format!("Failed to run container {}: {}", container_name, e).red()
-        //         );
-        //     }
-        // }
 
         println!(
             "{}",

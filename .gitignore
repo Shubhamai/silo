@@ -5,3 +5,6 @@ indexer.db
 silo/__pycache__/
 examples/__pycache__/
 silo.db
+sum.py
+README.md
+.gitignore

@@ -4,10 +4,8 @@ use fuser::{
     FileAttr, FileType, Filesystem, MountOption, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry,
     ReplyOpen, Request,
 };
-use futures::executor::block_on;
 use libc::ENOENT;
 use log::{debug, info};
-use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
@@ -294,44 +292,3 @@ impl Filesystem for SiloFS {
         }
     }
 }
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Args {
-    /// Mount point for the filesystem
-    #[clap(short, long, default_value = "fusefs_mount")]
-    mount: PathBuf,
-
-    /// TCP server address
-    #[clap(short, long, default_value = "127.0.0.1:8080")]
-    tcp_addr: String,
-
-    /// Name of the docker image to mount
-    #[clap(
-        short,
-        long,
-        default_value = "r8.im/shubhamai/yolov10@sha256:e387e93e8f7f55fa5ae21e94585cfae5361468376c45fc874defa1dd5ca67f5d"
-    )]
-    name: String,
-}
-
-// #[async_std::main]
-// async fn main() -> io::Result<()> {
-//     env_logger::init();
-
-//     let args = Args::parse();
-
-//     let fs = SiloFS::new(&args)?; //.await?;
-//     println!("Mounting filesystem...");
-
-//     Ok(())
-
-//     // let options = vec![
-//     //     MountOption::RO,
-//     //     MountOption::FSName("simplefs".to_string()),
-//     //     MountOption::AutoUnmount,
-//     //     MountOption::AllowOther,
-//     //     MountOption::Exec,
-//     // ];
-
-//     // fuser::mount2(fs, &args.mount, &options)
-// }

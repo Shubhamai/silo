@@ -4,13 +4,10 @@ mod filesystem;
 mod grpc;
 mod http;
 
-use std::thread;
-
 use actix_web::{web, App, HttpServer};
 use clap::Command;
 use colored::*;
 use db::init_db;
-use filesystem::SiloFS;
 use grpc::{silo::silo_server::SiloServer, TheSilo};
 use http::{configure_routes, AppState};
 use tera::Tera;
@@ -38,37 +35,9 @@ async fn main() -> std::io::Result<()> {
                         .long("http-port")
                         .help("The port to run the HTTP server on")
                         .default_value("8000"),
-                    // clap::Arg::new("container-path")
-                    //     .long("container-path")
-                    //     .help("The path to the container directory")
-                    //     .default_value("/home/elden/Downloads/python"),
                 ]),
         )
-        .subcommand(
-            Command::new("fs").about("Index a container")
-            // .args(&[
-                // clap::Arg::new("name")
-                //     .long("name")
-                //     .help("The name of the container to index")
-                //     .required(true),
-                // clap::Arg::new("image")
-                //     .long("image")
-                //     .help("The image to index")
-                //     .required(true),
-            // ]),
-        )
-        // .subcommand(
-        //     Command::new("filesystem").about("Run the FUSE filesystem").args(&[
-        //         clap::Arg::new("addr")
-        //             .long("addr")
-        //             .help("The TCP address to listen on")
-        //             .required(true),
-        //         clap::Arg::new("mountpoint")
-        //             .long("mountpoint")
-        //             .help("The path to mount the filesystem on")
-        //             .required(true),
-        //     ]),
-        // )
+       
         .get_matches();
 
     match matches.subcommand() {
