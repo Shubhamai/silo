@@ -1,6 +1,6 @@
 use crate::container::run_podman_container;
 use crate::db::{Container, ContainerStatus, Function, Output, Task};
-use crate::filesystem::SiloFS;
+use crate::filesystem::silofs::SiloFS;
 use chrono::Utc;
 use colored::*;
 use silo::silo_server::Silo;
@@ -11,10 +11,9 @@ pub mod silo {
     tonic::include_proto!("silo");
 }
 
-#[derive(Debug)]
 pub struct TheSilo {
-    // pub container_path: String,
     pub host_link: String,
+    pub filesystem: SiloFS,
 }
 
 #[tonic::async_trait]
@@ -25,21 +24,23 @@ impl Silo for TheSilo {
     ) -> Result<Response<GetPackageResponse>, Status> {
         // clear the terminal screen and reset the cursor to the top-left position
         print!("\x1B[2J\x1B[1;1H");
+        let start_time = std::time::Instant::now();
+
+        let request_data = request.into_inner();
 
         let container_name = format!("container-{}", rand::random::<u32>());
         let mount_path = &format!("/tmp/{}", container_name);
 
+        println!(
+            "{}",
+            format!("Creating container {}...", container_name).bright_yellow()
+        );
+
         std::fs::create_dir_all(mount_path).unwrap();
 
-        let thread_mount_path = mount_path.clone();
-        std::thread::spawn(move || {
-            let _ = SiloFS::run("127.0.0.1:8080", &thread_mount_path, "python:3.10");
-        });
-        std::thread::sleep(std::time::Duration::from_secs(1));
-
-        let start_time = std::time::Instant::now();
-
-        let request_data = request.into_inner();
+        self.filesystem
+            .mount(&request_data.image_name, mount_path)
+            .unwrap();
 
         // save function to the database
         reqwest::Client::new()
@@ -62,6 +63,7 @@ impl Silo for TheSilo {
                 func: request_data.func,
                 args: request_data.args,
                 kwargs: request_data.kwargs,
+                func_str: request_data.func_str,
             })
             .send()
             .await
@@ -77,7 +79,9 @@ impl Silo for TheSilo {
             format!("Running {}...", container_name).bright_yellow()
         );
 
-        let _ = run_podman_container(&container_name, task_id, &self.host_link, mount_path);
+        let container_result = run_podman_container(task_id, &self.host_link, mount_path)
+            .await
+            .unwrap();
 
         println!(
             "{}",
@@ -95,7 +99,7 @@ impl Silo for TheSilo {
                 self.host_link, container_name
             ))
             .json(&Container {
-                hostname: container_name.clone(),
+                hostname: container_name.to_string(),
                 status: ContainerStatus::Completed,
                 start_time: Utc::now().timestamp_millis(),
                 end_time: Utc::now().timestamp_millis(),
@@ -104,7 +108,7 @@ impl Silo for TheSilo {
             .await
             .unwrap();
 
-        let output = reqwest::Client::new()
+        let python_result = reqwest::Client::new()
             .get(format!("{}/api/results/{}", self.host_link, task_id))
             .body(container_name)
             .send()
@@ -114,12 +118,10 @@ impl Silo for TheSilo {
             .await
             .unwrap();
 
-        // delete the container
-        std::fs::remove_dir_all(mount_path).unwrap();
-
         let reply = silo::GetPackageResponse {
-            output: output.output,
-            errors: "errors".to_string(),
+            result: python_result.output,
+            stdout: String::from_utf8_lossy(&container_result.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&container_result.stderr).to_string(),
         };
         Ok(Response::new(reply))
     }

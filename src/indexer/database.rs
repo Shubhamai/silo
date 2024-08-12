@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, error};
+use log::{debug, info, error};
 
 use crate::indexer::ContentIndexer;
 use fuser::FileAttr;

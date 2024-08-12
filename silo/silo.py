@@ -16,9 +16,9 @@ class Server:
         channel = grpc.insecure_channel(url)
         self.client = SiloStub(channel)
 
-    def function(self):
+    def function(self, image):
         def decorator(func):
-            return RemoteFunction(self, func)
+            return RemoteFunction(self, func, image)
 
         return decorator
 
@@ -41,9 +41,10 @@ class Server:
 
 
 class RemoteFunction:
-    def __init__(self, server, func):
+    def __init__(self, server, func, image_name):
         self.server = server
         self.func = func
+        self.image_name = image_name
 
     def _make_request(self, endpoint, request=None):
         headers = {}
@@ -62,10 +63,11 @@ class RemoteFunction:
         request.func = base64.b64encode(cloudpickle.dumps(self.func)).decode("utf-8")
         request.args = base64.b64encode(cloudpickle.dumps(args)).decode("utf-8")
         request.kwargs = base64.b64encode(cloudpickle.dumps(kwargs)).decode("utf-8")
+        request.image_name = self.image_name
 
         response = self._make_request("execute", request)
 
-        return pickle.loads(base64.b64decode(response.output))
+        return pickle.loads(base64.b64decode(response.result))
 
     def map(self, inputs):
         with concurrent.futures.ThreadPoolExecutor() as executor:

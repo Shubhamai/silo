@@ -10,7 +10,7 @@ readme = "README.md"
 
 [[bin]]
 name = "indexer"
-path = "src/indexer.rs"
+path = "src/indexer/main.rs"
 
 [[bin]]
 name = "silo"

@@ -1,11 +1,12 @@
 use anyhow::Result;
+use log::{debug, error, info};
 use moka::future::Cache;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tracing::{info, error, debug};
 
 use crate::database::AppState;
 use fuser::FileAttr;
@@ -20,12 +21,16 @@ struct DataToSend {
 pub async fn run_tcp_server(state: AppState, host: &str, port: u16) -> Result<()> {
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr).await?;
+
+
     info!("TCP server listening on {}", addr);
 
     let cache: Cache<String, Arc<Vec<u8>>> = Cache::new(10_000);
 
     loop {
         let (mut socket, addr) = listener.accept().await?;
+        socket.set_nodelay(true)?;
+        
         let state = state.clone();
         let cache = cache.clone();
 
@@ -53,6 +58,8 @@ async fn handle_client(
                 break;
             }
             Ok(_) => {
+                let start = Instant::now();
+
                 let request = String::from_utf8_lossy(&buf)
                     .trim_end_matches('\0')
                     .to_string();
@@ -80,6 +87,11 @@ async fn handle_client(
                         socket.write_all(&file).await?;
                         cache.insert(request, Arc::new(file)).await;
                     }
+                }
+
+                // print that takes more than 2ms to read the content
+                if start.elapsed().as_millis() > 2 {
+                    info!("Read content in {}ms", start.elapsed().as_millis());
                 }
             }
             Err(e) => {

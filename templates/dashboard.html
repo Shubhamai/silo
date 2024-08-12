@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silo Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2 {
+            color: #2c3e50;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .status-starting { color: #f39c12; }
+        .status-running { color: #27ae60; }
+        .status-stopped { color: #7f8c8d; }
+        .status-failed { color: #c0392b; }
+        .container-link, .function-link, .result-link {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .container-link:hover, .function-link:hover, .result-link:hover {
+            text-decoration: underline;
+        }
+        .truncate {
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+    <h1>Silo Dashboard</h1>
+    
+    <h2>Containers</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Hostname</th>
+                <th>Status</th>
+                <th>Uptime (ms)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for container in containers %}
+            <tr>
+                <td>{{ container.hostname }}</td>
+                <td class="status-{{ container.status | lower }}">{{ container.status }}</td>
+                <td>{{ container.uptime }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Tasks</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Function</th>
+                <!-- <th>Arguments</th>
+                <th>Keyword Arguments</th> -->
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr>
+                <td>{{ task.id }}</td>
+                <td class="truncate"><a href="/api/functions/{{ task.func }}" class="function-link" title="{{ task.func }}">{{ task.func_str }}</a></td>
+                <!-- <td class="truncate" title="{{ task.args }}">{{ task.args }}</td>
+                <td class="truncate" title="{{ task.kwargs }}">{{ task.kwargs }}</td> -->
+                <td>
+                    <a href="/api/results/{{ task.id }}" class="result-link">View Result</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

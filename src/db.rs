@@ -18,6 +18,7 @@ pub struct Task {
     pub func: String,
     pub args: String,
     pub kwargs: String,
+    pub func_str: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -65,6 +66,8 @@ pub struct Container {
 pub struct Output {
     pub task_id: i64,
     pub output: String,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 pub fn init_db() -> Result<Connection> {
@@ -87,7 +90,8 @@ pub fn init_db() -> Result<Connection> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             func TEXT NOT NULL,
             args TEXT NOT NULL,
-            kwargs TEXT NOT NULL
+            kwargs TEXT NOT NULL,
+            func_str TEXT NOT NULL
         )",
         [],
     )?;
@@ -106,6 +110,8 @@ pub fn init_db() -> Result<Connection> {
         "CREATE TABLE IF NOT EXISTS results (
             task_id INTEGER PRIMARY KEY,
             output TEXT NOT NULL,
+            stdout TEXT,
+            stderr TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks(id)
         )",
         [],
@@ -175,15 +181,15 @@ impl Function {
 impl Task {
     pub fn insert(&self, conn: &Connection) -> Result<i64> {
         conn.execute(
-            "INSERT INTO tasks (func, args, kwargs) VALUES (?1, ?2, ?3)",
-            params![self.func, self.args, self.kwargs],
+            "INSERT INTO tasks (func, args, kwargs, func_str) VALUES (?1, ?2, ?3, ?4)",
+            params![self.func, self.args, self.kwargs, self.func_str],
         )?;
         Ok(conn.last_insert_rowid())
     }
 
     pub fn get(conn: &Connection, id: i64) -> Result<Option<Task>> {
         conn.query_row(
-            "SELECT id, func, args, kwargs FROM tasks WHERE id = ?1",
+            "SELECT id, func, args, kwargs, func_str FROM tasks WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Task {
@@ -191,6 +197,7 @@ impl Task {
                     func: row.get(1)?,
                     args: row.get(2)?,
                     kwargs: row.get(3)?,
+                    func_str: row.get(4)?,
                 })
             },
         )
@@ -198,13 +205,14 @@ impl Task {
     }
 
     pub fn get_all(conn: &Connection) -> Result<Vec<Task>> {
-        let mut stmt = conn.prepare("SELECT id, func, args, kwargs FROM tasks")?;
+        let mut stmt = conn.prepare("SELECT id, func, args, kwargs, func_str FROM tasks")?;
         let rows = stmt.query_map([], |row| {
             Ok(Task {
                 id: Some(row.get(0)?),
                 func: row.get(1)?,
                 args: row.get(2)?,
                 kwargs: row.get(3)?,
+                func_str: row.get(4)?,
             })
         })?;
 
@@ -218,8 +226,8 @@ impl Task {
 
     pub fn update(&self, conn: &Connection) -> Result<()> {
         conn.execute(
-            "UPDATE tasks SET func = ?1, args = ?2, kwargs = ?3 WHERE id = ?4",
-            params![self.func, self.args, self.kwargs, self.id],
+            "UPDATE tasks SET func = ?1, args = ?2, kwargs = ?3, func_str = ?4 WHERE id = ?5",
+            params![self.func, self.args, self.kwargs, self.func_str, self.id],
         )?;
         Ok(())
     }
@@ -293,31 +301,39 @@ impl Container {
 impl Output {
     pub fn insert(&self, conn: &Connection) -> Result<()> {
         conn.execute(
-            "INSERT INTO results (task_id, output) VALUES (?1, ?2)",
-            params![self.task_id, self.output],
+            "INSERT INTO results (task_id, output, stdout, stderr) VALUES (?1, ?2, ?3, ?4)",
+            params![self.task_id, self.output, self.stdout, self.stderr],
         )?;
         Ok(())
     }
 
     pub fn get(conn: &Connection, task_id: i64) -> Result<Option<Output>> {
         conn.query_row(
-            "SELECT task_id, output FROM results WHERE task_id = ?1",
+            "SELECT task_id, output, stdout, stderr FROM results WHERE task_id = ?1",
             params![task_id],
             |row| {
                 Ok(Output {
                     task_id: row.get(0)?,
                     output: row.get(1)?,
+                    stdout: row.get(2)?,
+                    stderr: row.get(3)?,
                 })
             },
         )
         .optional()
     }
 
-    pub fn update(&self, conn: &Connection) -> Result<()> {
+    pub fn update(
+        &self,
+        conn: &Connection,
+        stdout: Option<String>,
+        stderr: Option<String>,
+    ) -> Result<()> {
         conn.execute(
-            "UPDATE results SET output = ?1 WHERE task_id = ?2",
-            params![self.output, self.task_id],
+            "UPDATE results SET stdout = ?1, stderr = ?2 WHERE task_id = ?3",
+            params![stdout, stderr, self.task_id],
         )?;
+
         Ok(())
     }
 

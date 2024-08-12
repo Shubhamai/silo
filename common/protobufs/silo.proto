@@ -8,16 +8,17 @@ service Silo {
 message GetPackageRequest {
     int32 id = 1;
     string func_str = 2;
-    // string func_name = 3;
     string func = 3;
     string args = 4;
     string kwargs = 5;
+    string image_name = 6;
 }
 
 message GetPackageResponse {
-    string output = 2;
-    string errors = 3;
+    string result = 1;
+    string stdout = 2;
+    string stderr = 3;
 }
 
 // run in main directory 
-// python -m grpc_tools.protoc -I./common/protobufs/ --python_out=./examples/silo --grpc_python_out=./examples/silo silo.proto
+// python -m grpc_tools.protoc -I./common/protobufs/ --python_out=./silo --grpc_python_out=./silo silo.proto

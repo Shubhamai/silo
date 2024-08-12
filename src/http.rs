@@ -157,6 +157,8 @@ pub async fn add_result(
     let output = Output {
         task_id: task_id.into_inner(),
         output,
+        stdout: Some("null".to_string()),
+        stderr: Some("null".to_string()),
     };
     let conn = &data.db_connection.lock().await;
     output.insert(conn)?;

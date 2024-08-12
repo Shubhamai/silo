@@ -1,13 +1,14 @@
 mod container;
 mod db;
-mod filesystem;
 mod grpc;
 mod http;
+mod filesystem;
 
 use actix_web::{web, App, HttpServer};
 use clap::Command;
 use colored::*;
 use db::init_db;
+use filesystem::silofs::SiloFS;
 use grpc::{silo::silo_server::SiloServer, TheSilo};
 use http::{configure_routes, AppState};
 use tera::Tera;
@@ -47,11 +48,7 @@ async fn main() -> std::io::Result<()> {
 
             let grpc_server_addr: String = format!("0.0.0.0:{}", grpc_port);
             let http_server_addr = format!("0.0.0.0:{}", &http_port);
-            // let container_path: String = sub_matches
-            //     .get_one::<String>("container-path")
-            //     .unwrap()
-            //     .clone();
-
+            
             let tera = Tera::new("templates/**/*").unwrap();
 
             let conn = init_db().unwrap();
@@ -78,6 +75,7 @@ async fn main() -> std::io::Result<()> {
             let grpc_server = Server::builder()
                 .add_service(SiloServer::new(TheSilo {
                     host_link: format!("http://{}", http_server_addr),
+                    filesystem: SiloFS::new("127.0.0.1:8080")?
                 }))
                 .serve(grpc_server_addr.parse().unwrap());
 
