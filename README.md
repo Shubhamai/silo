@@ -51,7 +51,7 @@ Silo's architecture is composed of mainly four components:
 3. [FUSE Filesystem](./src/filesystem/silofs.rs) - Mounts a read-only filesystem for containers to access image files.
 4. [Indexer](./src/indexer/server.rs) - Manages container images, serving container files via a TCP server to the FUSE filesystem.
 
-Here's the defailed lifecycle for a user request in Silo:
+Here's the detailed lifecycle for a user request in Silo:
 
 ```mermaid
 sequenceDiagram
@@ -306,7 +306,7 @@ stateDiagram-v2
 
 While Silo is a powerful demonstration of container orchestration concepts, there's always room for improvement. Some areas we're considering for future development include:
 
-1. **Optimized Indexing**: The indexer right now is extremely inefficient when indexing the images. It indexes the entire image and stores it in the database. This is due to mounting an entire image then interating over individual files. A more practical way would be do perhaps do a parallel layer based indexing.
+1. **Optimized Indexing**: The indexer right now is extremely inefficient when indexing the images. It indexes the entire image and stores it in the database. This is due to mounting an entire image then interating over individual files. A more practical way would be to perhaps do a parallel layer based indexing.
 
 2. **Enhanced Security**: Security was not the primary focus of this project, but it's an important consideration for production use. Modal seems to be using [gVisor](https://gvisor.dev/) for this purpose. We can also use [firecracker](https://firecracker-microvm.github.io/) for this purpose.
 
