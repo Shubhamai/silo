@@ -1,4 +1,4 @@
-# Silo: Exploring the Next Generation of Serverless Platforms
+## Silo: Exploring the Next Generation of Serverless Platforms
 
 ## Introduction
 
