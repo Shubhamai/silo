@@ -11,7 +11,6 @@ use db::init_db;
 use filesystem::silofs::SiloFS;
 use grpc::{silo::silo_server::SiloServer, TheSilo};
 use http::{configure_routes, AppState};
-use tera::Tera;
 use tokio::sync::Mutex;
 use tonic::transport::Server;
 
@@ -49,12 +48,9 @@ async fn main() -> std::io::Result<()> {
             let grpc_server_addr: String = format!("0.0.0.0:{}", grpc_port);
             let http_server_addr = format!("0.0.0.0:{}", &http_port);
             
-            let tera = Tera::new("templates/**/*").unwrap();
-
             let conn = init_db().unwrap();
 
             let app_state = web::Data::new(AppState {
-                templates: tera,
                 db_connection: Mutex::new(conn),
             });
 

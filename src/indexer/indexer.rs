@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use log::{debug, info, error};
+use log::{debug};
 
 use fuser::{FileAttr, FileType};
 use sha2::{Digest, Sha256};

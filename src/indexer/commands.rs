@@ -1,5 +1,5 @@
 use anyhow::Result;
-use log::{debug, error, info};
+use log::{error, info};
 
 use crate::database::AppState;
 use crate::indexer::ContentIndexer;

@@ -1,4 +1,3 @@
-use log::{debug, info};
 use std::process::Command;
 
 pub async fn run_podman_container(
@@ -6,7 +5,7 @@ pub async fn run_podman_container(
     host_link: &str,
     mount_path: &str,
 ) -> std::io::Result<std::process::Output> {
-    let container_script_path = "silo.py";
+    let script_path = "silo.py";
 
     // Run the Podman command
     let status = Command::new("podman")
@@ -21,9 +20,11 @@ pub async fn run_podman_container(
             "--rootfs",
             mount_path,
             "python3",
-            container_script_path,
+            script_path,
         ])
         .output()?;
+
+    println!("Container exited with status: {:?}", status);
 
     Ok(status)
 }

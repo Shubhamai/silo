@@ -1,7 +1,6 @@
 use crate::container::run_podman_container;
-use crate::db::{Container, ContainerStatus, Function, Output, Task};
+use crate::db::{Output, Task};
 use crate::filesystem::silofs::SiloFS;
-use chrono::Utc;
 use colored::*;
 use silo::silo_server::Silo;
 use silo::{GetPackageRequest, GetPackageResponse};
@@ -42,19 +41,6 @@ impl Silo for TheSilo {
             .mount(&request_data.image_name, mount_path)
             .unwrap();
 
-        // save function to the database
-        reqwest::Client::new()
-            .post(format!("{}/api/functions", self.host_link))
-            .json(&Function {
-                id: None,
-                name: request_data.func.clone(),
-                function: request_data.func.clone(),
-                function_str: request_data.func_str.clone(),
-            })
-            .send()
-            .await
-            .unwrap();
-
         // send the data to the HTTP server
         let task_id = reqwest::Client::new()
             .post(format!("{}/api/tasks", self.host_link))
@@ -92,21 +78,6 @@ impl Silo for TheSilo {
             )
             .bright_yellow()
         );
-
-        reqwest::Client::new()
-            .patch(format!(
-                "{}/api/containers/{}",
-                self.host_link, container_name
-            ))
-            .json(&Container {
-                hostname: container_name.to_string(),
-                status: ContainerStatus::Completed,
-                start_time: Utc::now().timestamp_millis(),
-                end_time: Utc::now().timestamp_millis(),
-            })
-            .send()
-            .await
-            .unwrap();
 
         let python_result = reqwest::Client::new()
             .get(format!("{}/api/results/{}", self.host_link, task_id))

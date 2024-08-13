@@ -1,11 +1,9 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{debug, info, error};
 
 use crate::indexer::ContentIndexer;
 use fuser::FileAttr;
@@ -20,7 +18,7 @@ impl AppState {
     pub async fn new(db_path: String, output_folder: PathBuf) -> Result<Self> {
         let conn = Connection::open(&db_path)
             .with_context(|| format!("Failed to open database at {}", db_path))?;
-        
+
         let app_state = Self {
             db: Arc::new(Mutex::new(conn)),
             output_folder,
@@ -110,7 +108,14 @@ impl AppState {
         Ok(image_names)
     }
 
-    pub async fn get_image_data(&self, image_name: &str) -> Result<(HashMap<u64, HashMap<String, u64>>, HashMap<u64, FileAttr>, HashMap<u64, String>)> {
+    pub async fn get_image_data(
+        &self,
+        image_name: &str,
+    ) -> Result<(
+        HashMap<u64, HashMap<String, u64>>,
+        HashMap<u64, FileAttr>,
+        HashMap<u64, String>,
+    )> {
         let conn = self.db.lock().await;
 
         let mut stmt = conn.prepare(
