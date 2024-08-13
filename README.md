@@ -308,7 +308,7 @@ While Silo is a powerful demonstration of container orchestration concepts, ther
 
 1. **Optimized Indexing**: The indexer right now is extremely inefficient when indexing the images. It indexes the entire image and stores it in the database. This is due to mounting an entire image then interating over individual files. A more practical way would be to perhaps do a parallel layer based indexing.
 
-2. **Enhanced Security**: Security was not the primary focus of this project, but it's an important consideration for production use. Modal seems to be using [gVisor](https://gvisor.dev/) for this purpose. We can also use [firecracker](https://firecracker-microvm.github.io/) for this purpose.
+2. **Enhanced Security**: Security was not the primary focus of this project, but it's an important consideration for production use. Modal seems to be using [gVisor](https://gvisor.dev/) for this purpose.
 
 3. **Scalability Enhancements**: Silo is currently designed for single-machine use, but it could be extended to support multiple machines in a cluster. This would involve developing a distributed filesystem and load balancing.
 
