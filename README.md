@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Silo is my attempt to understand how infrastructure developed by [Modal Labs](https://modal.com/) and [similar](https://www.beam.cloud/) startups work. The primary goal is to have extremely fast build times, cold boot times ranging from a couple of seconds to hundreds of ms and is extremely cheap.
+Silo is an exploration into understanding how modern infrastructure developed by [Modal Labs](https://modal.com/) and [similar](https://www.beam.cloud/) startups work. The primary goal is to create a platform with extremely fast build times, cold boot times ranging from a couple of seconds to hundreds of milliseconds, and an extremely cheap solution for serverless computing.
 
 I learned a lot of initial concepts from the [Modal Labs Deep Dive](https://ehsanmkermani.com/2023/12/08/modal-labs-deep-dive/) blog post by [Ehsan](https://ehsanmkermani.com/) and [twitter thread](https://x.com/bernhardsson/status/1545399534980931584) by founder and CEO of Modal Labs, [Erik Bernhardsson](https://erikbern.com/).
 
@@ -10,18 +10,20 @@ This post covers key workings and components of the Silo architecture and how th
 
 ## Why
 
-Currently, methods of pulling and launching containers are slow, pulling an entire image can take from tens of seconds to minutes depending on the size. Building them can take similar or even longer depending on the cache. All of this adds up to the cost of the cloud infrastructure and thus to the end user.
+Currently, methods of pulling and launching containers are slow; pulling an entire image can take from tens of seconds to minutes, depending on the size. Building them can take similar or even longer depending on the cache. All of this adds up the cost of the cloud infrastructure and thus to the end user.
 
-It also slows down the development process and makes it harder to iterate on the code. Low latency in development is extremely important as mentioned in this great talk by [Bret Victor - Inventing on Principle.](https://www.youtube.com/watch?v=PUv66718DII)
+It also slows down the development process and makes it harder to iterate on the code. Low latency in development is extremely important as emphasized in this great talk by [Bret Victor - Inventing on Principle.](https://www.youtube.com/watch?v=PUv66718DII)
 
-One of the solutions to this problem is best explained in this [Twitter thread](https://x.com/bernhardsson/status/1545399534980931584) by Erik Bernhardsson, but in short, we take advantage of 4 different facts:
+## Solution
 
-1. Everything is a file(exceptions apply!) in Linux and the average file size in Linux is often less than an MB.
-2. Most of the time we don't need the entire image, we only need a few files.
-3. We can mount a container image as a filesystem. Eg. In Podman we can use the `--rootfs` flag to mount the image as a filesystem.
-4. Most of the files remain the same between different containers. Eg. Python standard library, numpy, pandas etc.
+One of the solution to this problem is best explained in this [Twitter thread](https://x.com/bernhardsson/status/1545399534980931584) by Erik Bernhardsson, but in short, we take advantage of 4 different facts:
 
-Using these four facts and a few more, we can create a system where we can mount the image as a filesystem and only pull the files we need, with added caching. This can reduce the cold boot time from tens of seconds to hundreds of ms.
+1. File-based Linux Structure: Almost everything is a file in Linux and the average file size in Linux is often less than an MB.
+2. Selective File Usage: We rarely need the entire image; a few specific files are used most of the time.
+3. We can mount a container image as a filesystem. e.g. In Podman we can use the `--rootfs` flag to mount the image as a filesystem.
+4. Most of the files are identical across containers. such as Python standard library, numpy, pandas etc.
+
+By using these facts and implementing caching techniques, we can significantly reduce cold boot times from tens of seconds to just hundreds of milliseconds.
 
 ## Quick Start
 
@@ -174,7 +176,7 @@ The gRPC server is the heart of Silo, managing the entire lifecycle of container
 
 [http.rs](./src/http.rs)
 
-The HTTP server acts as a bridge between the gRPC server and the containers, using following HTTP endpoints:
+The HTTP server facilitates communication between the gRPC server and the containers, using following HTTP endpoints:
 
 ```rs
 web::scope("/api")
@@ -211,6 +213,7 @@ erDiagram
 ```
 
 ### FUSE Filesystem
+
 [/filesystem](./src/filesystem/mount.rs)
 
 Silo uses a FUSE (Filesystem in Userspace) filesystem to provide a read-only view of filesystem to running containers. This filesystem:
@@ -219,8 +222,8 @@ Silo uses a FUSE (Filesystem in Userspace) filesystem to provide a read-only vie
 2. Acts as a read-only filesystem for containers.
 3. Retrieves file structure and contents from the Indexer via TCP.
 
-
 ### Indexer
+
 [indexer.rs](./src/indexer/indexer.rs)
 
 The Indexer is a crucial component that serves container file data and structure and allows adding new images to the system.
@@ -308,3 +311,5 @@ While Silo is a powerful demonstration of container orchestration concepts, ther
 2. **Enhanced Security**: Security was not the primary focus of this project, but it's an important consideration for production use. Modal seems to be using [gVisor](https://gvisor.dev/) for this purpose. We can also use [firecracker](https://firecracker-microvm.github.io/) for this purpose.
 
 3. **Scalability Enhancements**: Silo is currently designed for single-machine use, but it could be extended to support multiple machines in a cluster. This would involve developing a distributed filesystem and load balancing.
+
+4. **Encryption**: The communication between the gRPC server and the containers is not encrypted. This is a security risk and should be addressed.
