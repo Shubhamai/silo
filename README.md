@@ -232,6 +232,53 @@ Silo uses a FUSE (Filesystem in Userspace) filesystem to provide a read-only vie
 2. Acts as a read-only filesystem for containers.
 3. Retrieves file structure and contents from the Indexer via TCP.
 
+Our FUSE filesystem mainly implements the following methods [silofs.rs](./src/filesystem/mount.rs):
+
+```rs
+impl Filesystem for SiloFSMount {
+    fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
+        // Lookup a directory entry by name and get its attributes.
+    }
+
+    fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
+        // Get attributes for a file or directory.
+    }
+
+    fn read(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        size: u32,
+        _flags: i32,
+        _lock: Option<u64>,
+        reply: ReplyData,
+    ) {
+        // Read data from a file.
+    }
+
+    fn open(&mut self, _req: &Request, ino: u64, _flags: i32, reply: ReplyOpen) {
+        // Open a file.
+    }
+
+    fn readdir(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        mut reply: ReplyDirectory,
+    ) {
+        // Read a directory.
+    }
+
+    fn readlink(&mut self, _req: &Request, ino: u64, reply: ReplyData) {
+        // Read the target of a symbolic link.
+    }
+}
+```
+
 ### Indexer
 
 [indexer.rs](./src/indexer/indexer.rs)
