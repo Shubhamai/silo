@@ -27,12 +27,22 @@ By using these facts and implementing caching techniques, we can significantly r
 
 ## Quick Start
 
-To try Silo on your local machine, follow these steps:
+To try Silo on your local machine, install [podman](https://podman.io/), then follow these steps:
 
-1. Start the Silo gRPC server (which also starts with HTTP server, FUSE filesystem logic) and Indexer:
+1. Start the Indexer to index images ( requires root permissions ):
 
    ```bash
-   cargo run --release --bin indexer
+   $ cargo build --release --bin indexer
+   $ sudo RUST_LOG=info ./target/release/indexer
+   ```
+
+   A command-line interface will appear, allowing you to index images and list indexed images.
+   Index an image using: `index python:3.11` (substitute `python:3.11` with your python version)
+
+   Keep the Indexer running in the background.
+
+2. Start the Silo server:
+   ```bash
    cargo run --release --bin silo -- serve
    ```
 

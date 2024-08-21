@@ -13,10 +13,10 @@ pub struct Args {
     #[arg(short, long, default_value_t = 8080)]
     pub port: u16,
 
-    #[arg(short, long, default_value = "./content")]
+    #[arg(short, long, default_value = "./data/content")]
     pub storage: PathBuf,
 
-    #[arg(short, long, default_value = "indexer.db")]
+    #[arg(short, long, default_value = "./data/indexer.db")]
     pub db: String,
 }
 

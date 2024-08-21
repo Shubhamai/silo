@@ -35,6 +35,10 @@ async fn main() -> std::io::Result<()> {
                         .long("http-port")
                         .help("The port to run the HTTP server on")
                         .default_value("8000"),
+                    clap::Arg::new("db")
+                        .long("db")
+                        .help("The path to the SQLite database file")
+                        .default_value("./data/silo.db"),
                 ]),
         )
        
@@ -44,11 +48,12 @@ async fn main() -> std::io::Result<()> {
         Some(("serve", sub_matches)) => {
             let grpc_port: String = sub_matches.get_one::<String>("gp").unwrap().clone();
             let http_port: String = sub_matches.get_one::<String>("hp").unwrap().clone();
+            let db_path: String = sub_matches.get_one::<String>("db").unwrap().clone();
 
             let grpc_server_addr: String = format!("0.0.0.0:{}", grpc_port);
             let http_server_addr = format!("0.0.0.0:{}", &http_port);
             
-            let conn = init_db().unwrap();
+            let conn = init_db(db_path).expect("Failed to connect to the database");
 
             let app_state = web::Data::new(AppState {
                 db_connection: Mutex::new(conn),

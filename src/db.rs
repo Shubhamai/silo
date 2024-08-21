@@ -17,8 +17,8 @@ pub struct Output {
     pub output: String,
 }
 
-pub fn init_db() -> Result<Connection> {
-    let conn = Connection::open("silo.db")?;
+pub fn init_db(path: String) -> Result<Connection> {
+    let conn = Connection::open(path)?;
 
     conn.execute("PRAGMA foreign_keys = ON;", [])?;
 
